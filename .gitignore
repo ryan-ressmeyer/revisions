@@ -1,0 +1,10 @@
+.wf/
+/bin/
+node_modules/
+# web/dist is build output. The empty placeholder keeps go:embed compiling on a
+# fresh clone; every build copies it back from web/public.
+/web/dist/*
+!/web/dist/.gitkeep
+/web/test-results/
+/web/playwright-report/
+.claude/worktrees/

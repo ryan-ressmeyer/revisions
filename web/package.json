@@ -1,0 +1,36 @@
+{
+	"name": "revisions-web",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"build": "vite build",
+		"test": "vitest run",
+		"lint": "tsc --noEmit && biome check",
+		"e2e": "playwright test"
+	},
+	"dependencies": {
+		"@codemirror/autocomplete": "^6.20.4",
+		"@codemirror/commands": "^6.11.1",
+		"@codemirror/language": "^6.13.1",
+		"@codemirror/search": "^6.7.2",
+		"@codemirror/state": "^6.7.6",
+		"@codemirror/view": "^6.43.15",
+		"@lezer/highlight": "^1.2.5",
+		"katex": "^0.19.1",
+		"pdfjs-dist": "^6.5.438",
+		"react": "^19.3.1",
+		"react-dom": "^19.3.1"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.6.6",
+		"@playwright/test": "^1.65.0",
+		"@types/node": "^24.19.2",
+		"@types/react": "^19.3.0",
+		"@types/react-dom": "^19.3.0",
+		"@vitejs/plugin-react": "^6.3.0",
+		"jsdom": "^31.0.0",
+		"typescript": "^7.0.2",
+		"vite": "^8.3.7",
+		"vitest": "^5.1.0"
+	}
+}

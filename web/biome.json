@@ -1,0 +1,48 @@
+{
+	"$schema": "https://biomejs.dev/schemas/2.6.6/schema.json",
+	"vcs": {
+		"enabled": true,
+		"clientKind": "git",
+		"useIgnoreFile": true,
+		"root": ".."
+	},
+	"linter": { "rules": { "preset": "recommended" } },
+	"overrides": [
+		{
+			"includes": ["src/core/**"],
+			"linter": {
+				"rules": {
+					"style": {
+						"noRestrictedImports": {
+							"level": "error",
+							"options": {
+								"patterns": [
+									{
+										"group": [
+											"react",
+											"react/*",
+											"react-dom",
+											"react-dom/*",
+											"@codemirror/*",
+											"**/ui/**"
+										],
+										"message": "core is pure TypeScript: no React, CodeMirror, or ui imports."
+									}
+								]
+							}
+						},
+						"noRestrictedGlobals": {
+							"level": "error",
+							"options": {
+								"deniedGlobals": {
+									"document": "core is pure TypeScript: no DOM.",
+									"window": "core is pure TypeScript: no DOM."
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	]
+}
