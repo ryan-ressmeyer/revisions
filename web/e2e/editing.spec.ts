@@ -125,6 +125,44 @@ test("Settings persist: the build time limit survives a reload", async ({
 	);
 });
 
+test("Quit: the last edit is saved, the program stops, and the page says so without errors", async ({
+	page,
+	server,
+}) => {
+	await openPaper(page);
+	const order: string[] = [];
+	page.on("requestfinished", (r) => {
+		if (r.method() === "PUT" && r.url().includes("/file?")) order.push("save");
+	});
+	page.on("request", (r) => {
+		if (r.url().endsWith("/api/quit")) order.push("quit");
+	});
+	await typeAtStart(page, "% last words\n");
+	await page.getByRole("button", { name: "Settings" }).click();
+	await page.getByRole("button", { name: "Quit Revisions" }).click();
+
+	await expect(
+		page.getByRole("heading", { name: "Revisions has stopped" }),
+	).toBeVisible();
+	await expect(page.getByText("You can close this tab.")).toBeVisible();
+	await expect(page.getByText(/To start it again/)).toBeVisible();
+	expect(order.indexOf("save")).toBeGreaterThanOrEqual(0);
+	expect(order.indexOf("save")).toBeLessThan(order.indexOf("quit"));
+	expect(
+		readFileSync(join(server.paper, "main.tex"), "utf8").startsWith(
+			"% last words\n",
+		),
+	).toBe(true);
+	expect(await server.exited).toBe(0);
+
+	// Nothing polls the stopped server, so no errors pile up.
+	const after: string[] = [];
+	page.on("request", (r) => after.push(r.url()));
+	await page.waitForTimeout(3000);
+	expect(after).toEqual([]);
+	await expect(page.getByRole("alert")).toHaveCount(0);
+});
+
 test("Settings: a failure to load them is shown in the dialog", async ({
 	page,
 }) => {

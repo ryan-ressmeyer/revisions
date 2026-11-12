@@ -36,6 +36,8 @@ export interface Server {
 	cacheDir: string;
 	/** The clone of {@link PAPER} once it is opened. */
 	paper: string;
+	/** Resolves with the exit code once the process has ended. */
+	exited: Promise<number | null>;
 	stop(): Promise<void>;
 }
 
@@ -84,6 +86,7 @@ export async function startServer(
 		configDir: join(dir, "config"),
 		cacheDir: join(dir, "cache"),
 		paper: join(home, PAPER.id),
+		exited: exited.then(([code]) => code as number | null),
 		stop,
 	};
 }

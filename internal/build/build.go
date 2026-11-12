@@ -147,6 +147,20 @@ func (b *Builder) Cancel(id workspace.RepoID, fingerprint string) Status {
 	return b.Status(id, fingerprint)
 }
 
+// CancelAll cancels every running build, as Cancel does, before Revisions
+// quits.
+func (b *Builder) CancelAll() {
+	b.mu.Lock()
+	ids := make([]workspace.RepoID, 0, len(b.jobs))
+	for id := range b.jobs {
+		ids = append(ids, id)
+	}
+	b.mu.Unlock()
+	for _, id := range ids {
+		b.Cancel(id, "")
+	}
+}
+
 // ReadPDF returns the last good PDF and its version.
 func (b *Builder) ReadPDF(id workspace.RepoID) ([]byte, int, bool) {
 	b.good.RLock()

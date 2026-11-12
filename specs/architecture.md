@@ -55,7 +55,7 @@ The config directory holds `settings.json` and, for each clone, `repos/<host>/<o
 
 ### Process model
 
-The binary binds `127.0.0.1` on port 4747, or the port given by `--port`. If the port is taken by another Revisions instance, which it tests with `GET /api/ping`, it opens the browser at that instance and exits. `--no-browser` suppresses opening the browser. `--version` prints `revisions <version>` and exits. The version is `dev` unless the build sets `main.version`, which the release build does from the tag; `GET /api/ping` reports the same value.
+The binary binds `127.0.0.1` on port 4747, or the port given by `--port`. If the port is taken by another Revisions instance, which it tests with `GET /api/ping`, it opens the browser at that instance and exits. `--no-browser` suppresses opening the browser. The process runs until `POST /api/quit`, or until it is killed or the user logs out. `--version` prints `revisions <version>` and exits. The version is `dev` unless the build sets `main.version`, which the release build does from the tag; `GET /api/ping` reports the same value.
 
 ### Request hardening
 
@@ -87,6 +87,7 @@ Names and semantics here are binding. An agent that must change the contract cha
 | `POST /api/auth/device` | Starts the device flow. `{userCode, verificationUri, expiresIn, interval}`. Error: 503 `not_configured` when the build has no OAuth client ID. |
 | `POST /api/auth/device/poll` | `{status}` where status is `pending`, `ok`, `expired`, or `denied`. The page may poll at any rate: the server forwards a poll to GitHub only when GitHub's interval has passed and answers `pending` otherwise. With no sign-in in progress the status is `expired`. |
 | `POST /api/auth/signout` | Deletes the stored token. Answers like `GET /api/auth`. |
+| `POST /api/quit` | Cancels every running build, waiting until its processes are killed, and answers `{}`. The server then stops accepting connections, lets requests in flight finish for up to 30 s, and the program exits. |
 | `GET /api/repos` | Local clones: `[{id, branch, head}]`. `branch` is null on a detached HEAD. |
 | `POST /api/open` | Body `{url}`. Brings a clone to the shared ref. `{repo, ref: {kind, name, sha}}` describes what is checked out afterwards: `kind` is `branch` with the local branch in `name`, or `commit` with an empty `name` on a detached HEAD. Errors: 400 `bad_url`, 401 `auth_required`, 404 `not_found`, 409 `dirty` with `files` as in `R/git/status`, 424 `git_missing`, 502 `git_failed`. |
 

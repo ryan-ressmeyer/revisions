@@ -4,6 +4,7 @@ import {
 	type KeyboardEvent,
 	type PointerEvent,
 	type ReactNode,
+	type RefObject,
 	useCallback,
 	useEffect,
 	useMemo,
@@ -93,6 +94,7 @@ export function ProjectView({
 	id,
 	env,
 	settings,
+	saveBeforeQuit,
 	onEnvChange,
 	onAuthLost,
 }: {
@@ -100,6 +102,8 @@ export function ProjectView({
 	env: Env;
 	/** The Settings button, which the app owns. */
 	settings: ReactNode;
+	/** Where the app finds this view's save of pending edits before quitting. */
+	saveBeforeQuit: RefObject<() => Promise<boolean>>;
 	onEnvChange: (env: Env) => void;
 	/** GitHub answered auth_required: the app shows sign-in. */
 	onAuthLost: () => void;
@@ -640,6 +644,12 @@ export function ProjectView({
 			return false;
 		}
 	}, []);
+	useEffect(() => {
+		saveBeforeQuit.current = flushOpen;
+		return () => {
+			saveBeforeQuit.current = async () => true;
+		};
+	}, [saveBeforeQuit, flushOpen]);
 	// After a pull, switch, or discard: reload the file list and leave a
 	// file that no longer exists.
 	const afterGit = useCallback(() => {

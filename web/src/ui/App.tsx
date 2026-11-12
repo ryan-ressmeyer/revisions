@@ -1,5 +1,12 @@
-import { useCallback, useEffect, useState } from "react";
-import { type Auth, type Env, getAuth, getEnv } from "../api/client";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+	type Auth,
+	type Env,
+	getAuth,
+	getEnv,
+	type Platform,
+	quit,
+} from "../api/client";
 import { explain } from "./errors";
 import { GitGuidance } from "./Guidance";
 import { Home } from "./Home";
@@ -8,12 +15,23 @@ import { useRoute } from "./route";
 import { SettingsButton } from "./Settings";
 import { SignIn } from "./SignIn";
 
+const startAgain: Record<Platform, string> = {
+	darwin:
+		"To start it again, press Command-Space, type Revisions, and press Return.",
+	windows:
+		"To start it again, press the Windows key, type Revisions, and press Enter.",
+	linux: "To start it again, open Revisions from your applications menu.",
+};
+
 /** Start-up checks, then sign-in, home, or a project. */
 export function App() {
 	const [env, setEnv] = useState<Env | null>(null);
 	const [auth, setAuth] = useState<Auth | null>(null);
 	const [failure, setFailure] = useState("");
+	const [stopped, setStopped] = useState(false);
 	const route = useRoute();
+	// The open project's save of pending edits; false when it failed.
+	const saveBeforeQuit = useRef<() => Promise<boolean>>(async () => true);
 
 	const check = useCallback(async () => {
 		try {
@@ -29,6 +47,25 @@ export function App() {
 		check();
 	}, [check]);
 
+	const quitApp = useCallback(async () => {
+		if (!(await saveBeforeQuit.current()))
+			return "Revisions is still running, because your latest changes could not be saved. See the message above the editor.";
+		await quit();
+		setStopped(true);
+		return "";
+	}, []);
+
+	if (stopped) {
+		return (
+			<main className="center">
+				<section className="card">
+					<h1>Revisions has stopped</h1>
+					<p>Your changes are saved. You can close this tab.</p>
+					<p>{startAgain[env?.platform ?? "linux"]}</p>
+				</section>
+			</main>
+		);
+	}
 	if (failure) {
 		return (
 			<main className="center">
@@ -54,7 +91,9 @@ export function App() {
 	}
 	if (!auth.signedIn) return <SignIn onSignedIn={check} />;
 
-	const settings = <SettingsButton auth={auth} onSignedOut={check} />;
+	const settings = (
+		<SettingsButton auth={auth} onSignedOut={check} onQuit={quitApp} />
+	);
 	if (route.name === "repo") {
 		return (
 			<ProjectView
@@ -62,6 +101,7 @@ export function App() {
 				id={route.id}
 				env={env}
 				settings={settings}
+				saveBeforeQuit={saveBeforeQuit}
 				onEnvChange={setEnv}
 				onAuthLost={check}
 			/>

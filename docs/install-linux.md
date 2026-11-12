@@ -43,7 +43,7 @@ The installer puts Revisions in `~/.local/bin` and adds it to your applications 
 
 Open **Revisions** from your applications menu, or run `~/.local/bin/revisions` in a terminal. Your browser opens a Revisions tab.
 
-Revisions has no window of its own. It runs in the background and shows itself in the browser. Opening it again brings back the browser tab. It stops when you log out.
+Revisions has no window of its own. It runs in the background and shows itself in the browser. Opening it again brings back the browser tab. To stop it, click **Settings** in the Revisions tab, then **Quit Revisions**. It also stops when you log out.
 
 ## 4. Sign in with GitHub
 

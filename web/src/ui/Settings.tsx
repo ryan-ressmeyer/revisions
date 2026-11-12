@@ -43,9 +43,12 @@ function saveAppearance(appearance: Appearance) {
 export function SettingsButton({
 	auth,
 	onSignedOut,
+	onQuit,
 }: {
 	auth: Auth;
 	onSignedOut: () => void;
+	/** Saves pending edits and stops Revisions; resolves with a reason when it would not. */
+	onQuit: () => Promise<string>;
 }) {
 	const dialog = useRef<HTMLDialogElement>(null);
 	const [form, setForm] = useState<Settings | null>(null);
@@ -92,6 +95,29 @@ export function SettingsButton({
 		}
 	};
 
+	const [quitting, setQuitting] = useState(false);
+	const stop = async () => {
+		setMessage("");
+		setQuitting(true);
+		try {
+			const why = await onQuit();
+			if (why) setMessage(why);
+		} catch (error) {
+			setMessage(explain(error));
+		}
+		setQuitting(false);
+	};
+	const quitRow = (
+		<div className="account">
+			<span className="muted">
+				Revisions keeps running after this tab closes.
+			</span>
+			<button type="button" onClick={stop} disabled={quitting}>
+				Quit Revisions
+			</button>
+		</div>
+	);
+
 	return (
 		<>
 			<button type="button" className="quiet" onClick={show}>
@@ -104,6 +130,7 @@ export function SettingsButton({
 						<p role="alert" className="alert">
 							Your settings could not be loaded. {message}
 						</p>
+						{quitRow}
 						<div className="row end">
 							<button type="button" onClick={() => dialog.current?.close()}>
 								Close
@@ -188,6 +215,7 @@ export function SettingsButton({
 								Sign out
 							</button>
 						</div>
+						{quitRow}
 						<div className="row end">
 							<button type="button" onClick={() => dialog.current?.close()}>
 								Cancel

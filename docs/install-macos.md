@@ -48,7 +48,7 @@ Press Command-Space, type `Revisions`, and press Return. Your browser opens a Re
 
 If Spotlight does not find it yet, open Finder, choose **Go > Home**, open the **Applications** folder, and double-click **Revisions**.
 
-Revisions has no window or Dock icon of its own. It runs in the background and shows itself in the browser. Opening it again brings back the browser tab. It stops when you restart or log out.
+Revisions has no window or Dock icon of its own. It runs in the background and shows itself in the browser. Opening it again brings back the browser tab. To stop it, click **Settings** in the Revisions tab, then **Quit Revisions**. It also stops when you restart or log out.
 
 ## 5. Sign in with GitHub
 

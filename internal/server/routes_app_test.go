@@ -109,3 +109,45 @@ func pathOnly(name string) string {
 	p, _ := exec.LookPath(name)
 	return p
 }
+
+// quitting reports whether the server has been told to stop.
+func quitting(s *Server) bool {
+	select {
+	case <-s.Quitting():
+		return true
+	default:
+		return false
+	}
+}
+
+func TestQuitAnswersThenAsksToStop(t *testing.T) {
+	s := newTestServer(t)
+	if quitting(s) {
+		t.Fatal("a new server is already quitting")
+	}
+	rec := api(t, s, "POST", "/api/quit", nil)
+	if rec.Code != 200 || rec.Body.String() != "{}\n" {
+		t.Fatalf("POST /api/quit answered %d %q, want 200 {}", rec.Code, rec.Body)
+	}
+	if !quitting(s) {
+		t.Fatal("the server was not asked to stop")
+	}
+	// A second quit, from another tab, is answered too.
+	if rec := api(t, s, "POST", "/api/quit", nil); rec.Code != 200 {
+		t.Fatalf("a second quit answered %d", rec.Code)
+	}
+}
+
+// Scenario: Foreign origin, for the route that stops the program.
+func TestQuitRefusesAForeignPage(t *testing.T) {
+	s := newTestServer(t)
+	token := pageToken(t, s)
+	wantError(t, do(s, "POST", "/api/quit", "Origin", "https://evil.example", "X-Revisions-Token", token), 403, "bad_origin")
+	wantError(t, do(s, "POST", "/api/quit", "X-Revisions-Token", token), 403, "bad_origin")
+	wantError(t, do(s, "POST", "/api/quit", "Origin", testOrigin), 403, "bad_token")
+	wantError(t, do(s, "POST", "/api/quit", "Host", "evil.example:4747", "Origin", "http://evil.example:4747", "X-Revisions-Token", token), 403, "bad_host")
+	wantError(t, do(s, "GET", "/api/quit", "X-Revisions-Token", token), 404, "not_found")
+	if quitting(s) {
+		t.Fatal("a refused request stopped the server")
+	}
+}

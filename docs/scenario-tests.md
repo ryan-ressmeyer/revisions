@@ -120,6 +120,12 @@ Every Scenario in `specs/overview.md`, grouped by Requirement, with the automate
 |---|---|
 | Close with pending edits | `web/src/core/sync/sync.test.ts: "Close with pending edits: unsaved work lasts from the first edit until the save is confirmed"`; `web/e2e/editing.spec.ts: "Close with pending edits: the browser warns before the tab closes"` |
 
+## Quit
+
+| Scenario | Test |
+|---|---|
+| Quit | `cmd/revisions/main_test.go: TestQuitStopsServing`; `internal/server/routes_app_test.go: TestQuitAnswersThenAsksToStop`, `TestQuitRefusesAForeignPage`; `internal/server/routes_build_test.go: TestQuitCancelsTheRunningBuild`; `web/e2e/editing.spec.ts: "Quit: the last edit is saved, the program stops, and the page says so without errors"` (the real binary exits with code 0) |
+
 ## Explicit PDF builds
 
 | Scenario | Test |

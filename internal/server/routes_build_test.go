@@ -439,3 +439,19 @@ func TestStateReportsHashesBuildAndGit(t *testing.T) {
 		t.Errorf("after an outside edit: refs.bib hash %s, dirty %v", st.Hashes["refs.bib"], st.Git.Dirty)
 	}
 }
+
+func TestQuitCancelsTheRunningBuild(t *testing.T) {
+	needTeX(t)
+	s := newTestServer(t)
+	plainRepo(t, s, map[string]string{"main.tex": texDoc("\\def\\x{\\x}\\x")})
+	if st := decode[buildBody](t, api(t, s, "POST", R+"/build", nil)); st.State != "running" {
+		t.Fatalf("build state %q, want running", st.State)
+	}
+	if rec := api(t, s, "POST", "/api/quit", nil); rec.Code != 200 {
+		t.Fatalf("quit answered %d", rec.Code)
+	}
+	// Quit answers only once the build's processes are gone.
+	if st := decode[buildBody](t, api(t, s, "GET", R+"/build", nil)); st.State != "canceled" {
+		t.Errorf("after quit the build is %q, want canceled", st.State)
+	}
+}

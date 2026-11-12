@@ -100,6 +100,11 @@ export function putSettings(settings: Settings): Promise<Settings> {
 	return json("PUT", "/api/settings", settings);
 }
 
+/** Cancels running builds and stops the server once it has answered. */
+export async function quit(): Promise<void> {
+	await send("POST", "/api/quit");
+}
+
 export interface Auth {
 	signedIn: boolean;
 	/** Null when signed out, and when signed in while GitHub is unreachable. */

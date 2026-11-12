@@ -3,7 +3,9 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"net"
@@ -62,8 +64,29 @@ func run(port int, browser bool) error {
 	if browser {
 		openBrowser(url)
 	}
-	srv := &http.Server{Handler: server.New(paths, version, port, web.Dist()), ReadHeaderTimeout: 10 * time.Second}
-	return srv.Serve(ln)
+	if err := serve(ln, server.New(paths, version, port, web.Dist())); err != nil {
+		return err
+	}
+	fmt.Println("Revisions has stopped.")
+	return nil
+}
+
+// serve answers on ln until a page asks Revisions to quit, then stops
+// accepting requests, lets the ones in flight finish, and returns.
+func serve(ln net.Listener, h *server.Server) error {
+	srv := &http.Server{Handler: h, ReadHeaderTimeout: 10 * time.Second}
+	stopped := make(chan error, 1)
+	go func() {
+		<-h.Quitting()
+		// A Git command can take a while; past this the program exits anyway.
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		stopped <- srv.Shutdown(ctx)
+	}()
+	if err := srv.Serve(ln); !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	return <-stopped
 }
 
 // isRevisions reports whether a Revisions instance answers at url.

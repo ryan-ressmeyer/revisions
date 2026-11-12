@@ -293,6 +293,15 @@ Revisions SHALL warn before the browser tab closes while edits are unsaved. It S
 - WHEN the user closes the tab before an autosave completes
 - THEN the browser shows a leave-page warning
 
+### Requirement: Quit
+
+Revisions SHALL offer Quit Revisions in Settings, because the installed app has no window of its own on macOS and Linux. Quitting SHALL first save pending edits, and SHALL refuse and say why when they cannot be saved. It SHALL cancel any running build. The server SHALL answer the request, then stop and let requests in flight finish. The page SHALL then say plainly that Revisions has stopped, that the tab can be closed, and how to start it again, and SHALL send no further requests. The quit request SHALL pass the same loopback hardening as every other request [10].
+
+#### Scenario: Quit
+
+- WHEN the user chooses Quit Revisions in Settings less than a second after typing
+- THEN the edit is saved, the program exits, and the page says that Revisions has stopped and how to start it again
+
 ### Requirement: Explicit PDF builds
 
 Revisions SHALL compile only when the user presses the build button or shortcut. It SHALL show an out-of-date warning while the PDF lags the source. A failed build SHALL keep the last good PDF visible and show the error. The log of the build that made the PDF on screen SHALL stay available after later failed builds [8].
@@ -522,3 +531,4 @@ Redraft's OpenIrisDPI trust profile, protected objects, and separate Source View
 - [7] `notes/decisions-v1-kickoff.md`. Stack choice and the decisions that closed the earlier open questions, 2026-11-10.
 - [8] `notes/feedback-demo-01.md`. Feedback on the first demo build, 2026-11-11.
 - [9] `notes/feedback-demo-02.md`. Feedback on the second demo build and the publication decisions, 2026-11-11.
+- [10] The owner's request of 2026-11-11, "add a quit button and fix the stats macros", made after the installed app could only be stopped on macOS by logging out, and after a real manuscript's stats macros showed as errors and raw source in the inline view.

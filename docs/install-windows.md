@@ -44,7 +44,7 @@ The installer puts Revisions in `AppData\Local\Programs\Revisions` in your user 
 
 Press the Windows key, type `Revisions`, and press Enter. Your browser opens a Revisions tab.
 
-Revisions also puts a small window in the taskbar. It shows that Revisions is running. Close that window to quit Revisions. Opening Revisions again while it runs brings back the browser tab.
+Revisions also puts a small window in the taskbar. It shows that Revisions is running. To quit Revisions, click **Settings** in the Revisions tab, then **Quit Revisions**, or close that window. Opening Revisions again while it runs brings back the browser tab.
 
 ## 5. Sign in with GitHub
 
@@ -69,4 +69,4 @@ Run the line from step 3 again in a new PowerShell window. It replaces Revisions
 ## If something goes wrong
 
 - **The installer stops with red text that starts "Revisions was not installed".** The rest of that line says why. Nothing was changed, and you can run the line again.
-- **Revisions asks you to install Git or LaTeX.** Finish steps 1 and 2, then click **Check again**. If it still says they are missing, quit Revisions by closing its taskbar window, and open it again.
+- **Revisions asks you to install Git or LaTeX.** Finish steps 1 and 2, then click **Check again**. If it still says they are missing, quit Revisions (**Settings**, then **Quit Revisions**) and open it again.
