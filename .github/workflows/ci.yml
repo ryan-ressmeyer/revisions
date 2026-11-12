@@ -36,3 +36,21 @@ jobs:
       - name: End-to-end tests
         if: runner.os == 'Linux'
         run: make e2e
+
+  # make test above already runs the installer on each platform. This job also
+  # opens the installed app the way a person does: the .app bundle on macOS,
+  # the Start menu shortcut on Windows.
+  install:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - run: go test -run TestInstallScript -v ./cmd/revisions
+        env:
+          REVISIONS_TEST_LAUNCH: "1"
