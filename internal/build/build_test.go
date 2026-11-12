@@ -209,6 +209,104 @@ func TestErrorsCarryRepositoryRelativePaths(t *testing.T) {
 	}
 }
 
+// latexmk does not rerun a rule that failed until one of its sources changes;
+// it prints "Nothing to do" and "gave an error in previous invocation" and no
+// error with a file and line.
+func TestRebuildAfterAFailureShowsTheErrorAgain(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t, map[string]string{"main.tex": doc("\\nosuchmacro")})
+	want := []Error{{Path: "main.tex", Line: 3, Message: "Undefined control sequence."}}
+
+	for i, b := range []*Builder{f.b, f.b, New(f.paths.CacheDir)} {
+		f.b = b // the last build runs in a new process
+		st := f.build(t, time.Minute)
+		if st.State != "failed" || !reflect.DeepEqual(st.Errors, want) || strings.Contains(st.Log, "Nothing to do") {
+			t.Fatalf("build %d: state %q, errors %+v, want %+v\n%s", i+1, st.State, st.Errors, want, st.Log)
+		}
+	}
+
+	if err := os.WriteFile(filepath.Join(f.root, "main.tex"), []byte(doc("Fixed.")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if st := f.build(t, time.Minute); st.State != "succeeded" {
+		t.Fatalf("after the fix: state %q\n%s", st.State, st.Log)
+	}
+	// An unchanged rebuild after a success stays as quick as before.
+	if st := f.build(t, time.Minute); st.State != "succeeded" || !strings.Contains(st.Log, "Nothing to do") {
+		t.Errorf("unchanged rebuild after a success: state %q, ran the engine again\n%s", st.State, st.Log)
+	}
+}
+
+// A comment's margin note in a figure stops pdflatex; biber can then meet a
+// malformed .bcf and delete the .bbl. Recent latexmk renames a .bcf that
+// lacks its last line itself, so the test breaks one the way an interrupted
+// run of an older TeX left it, and marks the output as a release that never
+// cleaned it would have.
+func TestRecoveryAfterABiberFailure(t *testing.T) {
+	t.Parallel()
+	if FindTool("biber") == "" {
+		t.Skip("biber is not installed")
+	}
+	paper := func(figure string) string {
+		return "\\documentclass{article}\n\\usepackage{changes}\n\\usepackage[backend=biber]{biblatex}\n" +
+			"\\addbibresource{refs.bib}\n\\definechangesauthor{GH}\n\\begin{document}\n" +
+			"\\begin{figure}" + figure + "\\caption{A figure.}\\end{figure}\n" +
+			"See \\cite{key}.\n\\printbibliography\n\\end{document}\n"
+	}
+	f := newFixture(t, map[string]string{
+		"main.tex": paper("word"),
+		"refs.bib": "@book{key, author={A. Author}, title={A Title}, year={2000}, publisher={P}}\n",
+	})
+	write := func(text string) {
+		if err := os.WriteFile(filepath.Join(f.root, "main.tex"), []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if st := f.build(t, 2*time.Minute); st.State != "succeeded" {
+		t.Fatalf("first build: state %q\n%s", st.State, st.Log)
+	}
+
+	write(paper("\\highlight[id=GH, comment={A comment}]{word}"))
+	want := []Error{{Path: "main.tex", Line: 10, Message: "LaTeX Error: Float(s) lost."}}
+	if st := f.build(t, 2*time.Minute); st.State != "failed" || !reflect.DeepEqual(st.Errors, want) {
+		t.Fatalf("comment in a figure: state %q, errors %+v\n%s", st.State, st.Errors, st.Log)
+	}
+
+	out := f.b.dir(testID, "out")
+	bcf := filepath.Join(out, "main.bcf")
+	data, err := os.ReadFile(bcf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	broken := strings.Replace(string(data), "<bcf:bibdata section=\"0\">", "<bcf:bibdata section=\"0\"", 1)
+	if err := os.WriteFile(bcf, []byte(broken), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	os.Remove(filepath.Join(out, "main.bbl"))
+	if err := os.WriteFile(filepath.Join(out, okMarker), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if st := f.build(t, 2*time.Minute); st.State != "failed" || !strings.Contains(st.Log, "malformed") {
+		t.Fatalf("biber did not fail on the malformed .bcf: state %q\n%s", st.State, st.Log)
+	}
+
+	for i := range 2 {
+		if st := f.build(t, 2*time.Minute); st.State != "failed" || !reflect.DeepEqual(st.Errors, want) {
+			t.Fatalf("unchanged rebuild %d after the biber failure: state %q, errors %+v\n%s", i+1, st.State, st.Errors, st.Log)
+		}
+	}
+
+	write(paper("word"))
+	st := f.build(t, 2*time.Minute)
+	if st.State != "succeeded" {
+		t.Fatalf("after the fix: state %q\n%s", st.State, st.Log)
+	}
+	// The .log holds the last pass of the engine only.
+	if last, err := os.ReadFile(filepath.Join(out, "main.log")); err != nil || strings.Contains(string(last), "Citation 'key'") {
+		t.Errorf("the citation does not resolve after the fix (%v)\n%s", err, st.Log)
+	}
+}
+
 // With -outdir, TeX writes sub/chapter.aux into the output directory, which
 // must therefore mirror the source directories.
 func TestIncludeFromASubdirectoryBuilds(t *testing.T) {

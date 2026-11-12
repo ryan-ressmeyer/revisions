@@ -134,6 +134,8 @@ Every Scenario in `specs/overview.md`, grouped by Requirement, with the automate
 | Edit after build | `internal/server/routes_build_test.go: TestBuildLifecycle/Edit_after_build`; `web/e2e/build.spec.ts: "Edit after build: the PDF is marked out of date and is not rebuilt"` |
 | Failed build | `internal/server/routes_build_test.go: TestBuildLifecycle/Failed_build`; `web/e2e/build.spec.ts: "Failed build: the last good PDF stays and the error is shown"` |
 | Log of the PDF on screen | `internal/build/build_test.go: TestTheGoodPDFKeepsTheLogOfItsBuild`; `internal/server/routes_build_test.go: TestBuildLifecycle/Failed_build`; `web/e2e/build.spec.ts: "Build log: shows the log of the build whose PDF is on screen, after a failed build"` |
+| Rebuild after a failure | `internal/build/build_test.go: TestRebuildAfterAFailureShowsTheErrorAgain`, `TestRecoveryAfterABiberFailure` |
+| Fixed after a failure | `internal/build/build_test.go: TestRebuildAfterAFailureShowsTheErrorAgain`, `TestRecoveryAfterABiberFailure` (skipped without biber) |
 
 ## Local build isolation
 

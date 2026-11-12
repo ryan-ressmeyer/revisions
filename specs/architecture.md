@@ -201,6 +201,7 @@ A file that is not valid UTF-8 is served for reading and refuses saves with 422 
 
 - The command is `latexmk -norc` with the engine flag, `-interaction=nonstopmode`, `-file-line-error`, `-synctex=1`, `-no-shell-escape`, and `-outdir` in the build cache. The working directory is the entry file's directory. `-norc` matters because a `latexmkrc` is executable Perl.
 - The output directory mirrors the source directories below the entry file's directory, because TeX writes the `.aux` file of `\include{sub/chapter}` into `sub/` there and does not create it.
+- A build empties the output directory first unless the empty file `.revisions-ok` there says the previous build succeeded; a successful build writes it, and every build removes it before running. `latexmk` records a failed step and, until one of its sources changes, skips it and reports only "gave an error in previous invocation". A `.bcf` or `.aux` that a failed run left malformed can also keep a later build failing after the source is fixed. Neither `-g` nor `-gt` recovers from a malformed `.bcf`. The cost is that the first build after a failure is a full build.
 - The engine is `pdflatex` unless `.revisions.toml` sets `engine` to `xelatex` or `lualatex`.
 - One build runs per repository. The timeout is read from settings when the build starts. On timeout or cancel, the whole process group is killed.
 - The server keeps the last 1 MiB of output and extracts `file:line: message` errors from it.

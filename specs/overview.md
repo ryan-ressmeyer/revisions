@@ -309,7 +309,7 @@ Revisions SHALL offer Quit Revisions in Settings, because the installed app has 
 
 ### Requirement: Explicit PDF builds
 
-Revisions SHALL compile only when the user presses the build button or shortcut. It SHALL show an out-of-date warning while the PDF lags the source. A failed build SHALL keep the last good PDF visible and show the error. The log of the build that made the PDF on screen SHALL stay available after later failed builds [8].
+Revisions SHALL compile only when the user presses the build button or shortcut. It SHALL show an out-of-date warning while the PDF lags the source. A failed build SHALL keep the last good PDF visible and show the error. The log of the build that made the PDF on screen SHALL stay available after later failed builds [8]. A build after one that failed, timed out, or was cancelled SHALL compile again from the start, so that it shows the real error again when nothing changed and succeeds once the source is fixed, with no cache to clear by hand [11].
 
 #### Scenario: Edit after build
 
@@ -325,6 +325,16 @@ Revisions SHALL compile only when the user presses the build button or shortcut.
 
 - WHEN a build fails after a successful one and the user opens the build log of the PDF
 - THEN Revisions shows the log of the successful build, not the failed one
+
+#### Scenario: Rebuild after a failure
+
+- WHEN a build fails and the user builds again without changing the source
+- THEN the build runs the compiler again and shows the same error with its file and line
+
+#### Scenario: Fixed after a failure
+
+- WHEN a build fails, including one whose bibliography step failed too, and the user fixes the source and builds again
+- THEN the PDF builds, with its citations resolved
 
 ### Requirement: Local build isolation
 
@@ -536,3 +546,4 @@ Redraft's OpenIrisDPI trust profile, protected objects, and separate Source View
 - [8] `notes/feedback-demo-01.md`. Feedback on the first demo build, 2026-11-11.
 - [9] `notes/feedback-demo-02.md`. Feedback on the second demo build and the publication decisions, 2026-11-11.
 - [10] The owner's request of 2026-11-11, "add a quit button and fix the stats macros", made after the installed app could only be stopped on macOS by logging out, and after a real manuscript's stats macros showed as errors and raw source in the inline view.
+- [11] The owner's report against v0.1.0, 2026-11-11: a comment in the abstract of a journal template stopped the build with `Float(s) lost`, and pressing Build PDF again later reported a failure with no error, file, or line, because `latexmk` skips a step that failed before until a source changes.

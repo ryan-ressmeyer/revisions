@@ -24,6 +24,9 @@ import (
 // maxLog is how much build output is kept: the last 1 MiB.
 const maxLog = 1 << 20
 
+// okMarker, in the output directory, says the last build there succeeded.
+const okMarker = ".revisions-ok"
+
 // Error is one `file:line: message` error from the build output.
 type Error struct {
 	Path    string `json:"path"` // relative to the repository root; empty for a file outside it
@@ -193,7 +196,20 @@ func (b *Builder) run(ctx context.Context, j *job, id workspace.RepoID, root str
 
 	entry := filepath.Join(root, filepath.FromSlash(proj.Entry))
 	out := b.dir(id, "out")
-	err := mirrorDirs(out, proj)
+	// After a build that did not succeed, start from an empty directory:
+	// latexmk will not rerun a rule that failed until a source changes, and a
+	// malformed .bcf or .aux can keep failing after the source is fixed.
+	// ponytail: the build after a failure is a full build (about 4x the
+	// incremental one on testdata/manuscript); if that hurts, keep the
+	// directory and pass -g, deleting only the .bcf and .aux files.
+	ok := filepath.Join(out, okMarker)
+	err := os.Remove(ok)
+	if err != nil {
+		err = os.RemoveAll(out)
+	}
+	if err == nil {
+		err = mirrorDirs(out, proj)
+	}
 	if err == nil {
 		engine := map[string]string{"xelatex": "-xelatex", "lualatex": "-lualatex"}[proj.Engine]
 		if engine == "" {
@@ -223,6 +239,7 @@ func (b *Builder) run(ctx context.Context, j *job, id workspace.RepoID, root str
 		jobname := strings.TrimSuffix(filepath.Base(entry), filepath.Ext(entry))
 		if err = b.promote(id, out, jobname, proj.Entry, fingerprint, j.log.String(), finished); err == nil {
 			state = "succeeded"
+			os.WriteFile(ok, nil, 0o644) // if lost, the next build is a full one
 		}
 	case errors.Is(ctx.Err(), context.DeadlineExceeded):
 		state = "timeout"
