@@ -2,6 +2,7 @@
 // graphics lookup. Everything here works from file text alone, so citations
 // and references resolve before the first build.
 import { bibEntries } from "../bib/bib";
+import { type Definition, definers, definitionAt, type Macro } from "./macros";
 import { type Node, type Range, scan } from "./scan";
 
 /** A repository text file: path relative to the repository root, `/`-separated. */
@@ -31,6 +32,12 @@ export interface ProjectIndex {
 	includes: Map<string, string[]>;
 	/** `\graphicspath` directories, relative to the repository root. */
 	graphicsPaths: string[];
+	/**
+	 * For each LaTeX file, its macro definitions and the files it includes, in
+	 * source order, for {@link definedMacros}. Definitions inside a group or
+	 * a command's argument are local or deferred in TeX and left out.
+	 */
+	definitions: Map<string, (Definition | { include: string })[]>;
 }
 
 const labelInMath = /\\label\s*\{([^{}]*)\}/g;
@@ -49,6 +56,7 @@ export function buildIndex(files: readonly SourceFile[]): ProjectIndex {
 		citations: new Map(),
 		includes: new Map(),
 		graphicsPaths: [],
+		definitions: new Map(),
 	};
 	const paths = new Set(files.map((f) => f.path));
 	for (const { path, text } of files) {
@@ -60,9 +68,12 @@ export function buildIndex(files: readonly SourceFile[]): ProjectIndex {
 		}
 		const included: string[] = [];
 		index.includes.set(path, included);
+		const steps: (Definition | { include: string })[] = [];
+		index.definitions.set(path, steps);
 		const inner = (node: Range | undefined) =>
 			node ? text.slice(node.from + 1, node.to - 1).trim() : "";
-		const visit = (nodes: Node[]) => {
+		// `top`: outside every group and command argument.
+		const visit = (nodes: Node[], top: boolean) => {
 			for (const node of nodes) {
 				if (node.kind === "math") {
 					const body = text.slice(node.bodyFrom, node.bodyTo);
@@ -90,6 +101,11 @@ export function buildIndex(files: readonly SourceFile[]): ProjectIndex {
 							? findUp(inner(args[0]), path, ["", ".tex"], paths)
 							: undefined;
 						if (target && !included.includes(target)) included.push(target);
+						if (target) steps.push({ include: target });
+					} else if (top && definers.has(name)) {
+						const at = node.children[0]?.to ?? to;
+						const definition = definitionAt(text, name, at);
+						if (definition) steps.push(definition);
 					} else if (name === "graphicspath" && args[0]?.closed) {
 						for (const entry of args[0].children) {
 							if (entry.kind !== "group") continue;
@@ -98,10 +114,11 @@ export function buildIndex(files: readonly SourceFile[]): ProjectIndex {
 						}
 					}
 				}
-				if ("children" in node) visit(node.children);
+				if ("children" in node)
+					visit(node.children, top && node.kind === "env");
 			}
 		};
-		visit(scan(text).children);
+		visit(scan(text).children, true);
 	}
 	return index;
 }
@@ -118,6 +135,34 @@ export function includedFiles(index: ProjectIndex, entry: string): string[] {
 		for (const child of index.includes.get(path) ?? []) visit(child);
 	};
 	visit(entry);
+	return out;
+}
+
+/**
+ * The macros in force in `open`: those its document defines, replayed in
+ * the order TeX reads them, so a later definition wins and
+ * `\providecommand` keeps an earlier one. The document is `entry` when
+ * `entry` includes `open`, and otherwise `open` alone.
+ */
+export function definedMacros(
+	index: ProjectIndex,
+	entry: string,
+	open: string,
+): Map<string, Macro> {
+	const root =
+		entry && includedFiles(index, entry).includes(open) ? entry : open;
+	const out = new Map<string, Macro>();
+	const read = new Set<string>();
+	const visit = (path: string) => {
+		if (read.has(path)) return;
+		read.add(path);
+		for (const step of index.definitions.get(path) ?? []) {
+			if ("include" in step) visit(step.include);
+			else if (!step.provide || !out.has(step.name))
+				out.set(step.name, step.macro);
+		}
+	};
+	visit(root);
 	return out;
 }
 

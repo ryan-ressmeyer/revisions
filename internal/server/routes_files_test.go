@@ -138,7 +138,7 @@ func TestProjectOffersEveryEntryCandidate(t *testing.T) {
 			t.Errorf("%s: size %d does not match the file", f.Path, f.Size)
 		}
 	}
-	want := map[string]string{"main.tex": "text", "supplement.tex": "text", "refs.bib": "text", "sections/methods.tex": "text", "figures/trace.png": "image"}
+	want := map[string]string{"main.tex": "text", "supplement.tex": "text", "refs.bib": "text", "sections/methods.tex": "text", "stats.tex": "text", "figures/trace.png": "image"}
 	if !reflect.DeepEqual(kinds, want) {
 		t.Errorf("files = %v, want %v", kinds, want)
 	}

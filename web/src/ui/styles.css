@@ -2280,3 +2280,11 @@ dialog.wide {
 .commit-view {
 	margin-bottom: 0.75rem;
 }
+
+/* A user macro drawn as its value: reads as text, with a faint underline
+   that says it stands for a macro (named on hover). */
+.rich-value {
+	text-decoration: underline dotted var(--muted);
+	text-underline-offset: 0.2em;
+	cursor: text;
+}

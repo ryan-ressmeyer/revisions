@@ -18,9 +18,13 @@ describe("buildIndex", () => {
 			"rolfs2009",
 			"rucci2015",
 		]);
-		expect(index.includes.get("main.tex")).toEqual(["sections/methods.tex"]);
+		expect(index.includes.get("main.tex")).toEqual([
+			"stats.tex",
+			"sections/methods.tex",
+		]);
 		expect(includedFiles(index, "main.tex")).toEqual([
 			"main.tex",
+			"stats.tex",
 			"sections/methods.tex",
 		]);
 		expect(includedFiles(index, "supplement.tex")).toEqual(["supplement.tex"]);

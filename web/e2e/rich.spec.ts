@@ -81,6 +81,53 @@ test.describe("rendering", () => {
 			.toBe(original.replace("\\vdeg{0.5}", "\\vdeg{0.50}"));
 	});
 
+	test("User macros: formulas use the manuscript's definitions, values show in prose, and a changed definition redraws", async ({
+		page,
+		server,
+	}) => {
+		const methodsPath = join(server.paper, "sections/methods.tex");
+		await openPaper(page);
+		const methods = readFileSync(methodsPath, "utf8");
+		await openFromTree(page, "sections/methods.tex");
+
+		const neurons = editor(page).locator(".rich-value", { hasText: "83" });
+		await expect(neurons).toHaveAttribute("title", "\\NumNeurons");
+		await expect(
+			editor(page).locator(".rich-value", { hasText: "[1.02, 1.19]" }),
+		).toHaveAttribute("title", "\\GainCI");
+		await expect(editor(page).getByText("\\NumNeurons")).toHaveCount(0);
+
+		const gain = editor(page).locator('.rich-math[aria-label="\\\\Gain"]');
+		await expect(gain.locator(".katex")).toBeVisible();
+		await expect(gain).toContainText("post");
+		const count = editor(page).locator(
+			'.rich-math[aria-label="n = \\\\NumNeurons"]',
+		);
+		await expect(count).toContainText("83");
+		for (const formula of [gain, count]) {
+			await expect(formula.locator(".katex-error")).toHaveCount(0);
+			await expect(formula.locator('[style*="color:#cc0000"]')).toHaveCount(0);
+		}
+
+		// The cursor in a value shows its source; the file is not touched.
+		await select(page, "\\NumSessions");
+		await expect(
+			editor(page).getByText("\\NumSessions\\ sessions"),
+		).toBeVisible();
+		await page.keyboard.press("Control+Home");
+		await expect(editor(page).getByText("\\NumSessions")).toHaveCount(0);
+		expect(readFileSync(methodsPath, "utf8")).toBe(methods);
+
+		// A changed definition redraws the formula and the value that use it.
+		const stats = join(server.paper, "stats.tex");
+		writeFileSync(stats, readFileSync(stats, "utf8").replace("{83}", "{84}"));
+		await expect(count).toContainText("84");
+		await expect(
+			editor(page).locator(".rich-value", { hasText: "84" }),
+		).toHaveAttribute("title", "\\NumNeurons");
+		await expect(gain.locator(".katex")).toBeVisible();
+	});
+
 	test("Cursor entry: a display equation shows its source while the cursor is in it", async ({
 		page,
 	}) => {

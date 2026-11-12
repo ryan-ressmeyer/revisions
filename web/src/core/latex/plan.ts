@@ -2,6 +2,13 @@
 // index, plain data saying what to hide, style, or replace with a widget.
 // The UI maps it one-to-one onto CodeMirror decorations.
 import { type Change, changeOf } from "./changes";
+import {
+	definers,
+	definitionAt,
+	type Macros,
+	macroValue,
+	mathMacros,
+} from "./macros";
 import type { ProjectIndex } from "./project";
 import {
 	type Command,
@@ -104,6 +111,11 @@ export interface MathWidget {
 	kind: "math";
 	tex: string;
 	display: boolean;
+	/**
+	 * The user macros the formula uses, for KaTeX's `macros` option; see
+	 * `mathMacros`. Absent when it uses none.
+	 */
+	macros?: Record<string, string>;
 }
 
 /** `\cite` and friends. `pre`/`post` are the optional notes as written. */
@@ -124,6 +136,16 @@ export interface RefWidget {
 	keys: KeyStatus[];
 }
 
+/**
+ * A use of a user macro whose definition is plain text or a number, shown
+ * as that text. `name` is the macro's name without the backslash.
+ */
+export interface ValueWidget {
+	kind: "value";
+	name: string;
+	text: string;
+}
+
 /** A run of inside-a-table content the UI can render without LaTeX. */
 export type Fragment =
 	| {
@@ -136,6 +158,7 @@ export type Fragment =
 	| MathWidget
 	| CiteWidget
 	| RefWidget
+	| ValueWidget
 	/** Unrecognised source, shown as written. */
 	| { kind: "raw"; text: string };
 
@@ -158,6 +181,7 @@ export type Widget =
 	| MathWidget
 	| CiteWidget
 	| RefWidget
+	| ValueWidget
 	/**
 	 * A control symbol such as `\%` or a tie `~`, shown as the character it
 	 * prints (`~` as U+00A0).
@@ -280,6 +304,11 @@ export interface PlanOptions {
 	 * `guardEdit(…, markup = false)`.
 	 */
 	markup?: boolean;
+	/**
+	 * The manuscript's own macros, from `definedMacros`. Formulas get those
+	 * they use, and a use of a plain value in prose is drawn as its value.
+	 */
+	macros?: Macros;
 }
 
 /**
@@ -293,6 +322,7 @@ export function buildPlan(
 	options: PlanOptions = {},
 ): Plan {
 	const markup = options.markup ?? true;
+	const macros = options.macros ?? noMacros;
 	const root = scan(text);
 	const primitives: Primitive[] = [];
 	const groups: PlanGroup[] = [];
@@ -444,7 +474,10 @@ export function buildPlan(
 			widget(line ?? cmd, w, !!line);
 			return true;
 		}
-		return change(cmd);
+		if (change(cmd)) return true;
+		const v = valueWidget(cmd, macros);
+		if (v) widget(cmd, v);
+		return !!v;
 	};
 
 	const list = (env: Env, depth: number) => {
@@ -499,17 +532,25 @@ export function buildPlan(
 		}
 		if (tabulars.has(env.name) && env.end) {
 			const line = ownLine(env);
-			widget(line ?? env, table(text, env, index), !!line);
+			widget(line ?? env, table(text, env, index, macros), !!line);
 			return;
 		}
 		walk(env.children, float, depth);
 	};
 
 	function walk(nodes: Node[], float: string | undefined, depth = 0): void {
+		// The end of a macro definition being passed over: it stays as written.
+		let definition = 0;
 		for (const node of nodes) {
+			if (node.from < definition) continue;
+			if (node.kind === "command" && definers.has(node.name)) {
+				const at = node.children[0]?.to ?? node.to;
+				definition = definitionAt(text, node.name, at)?.to ?? node.to;
+				continue;
+			}
 			if (node.kind === "math") {
 				const line = node.display ? ownLine(node) : undefined;
-				widget(line ?? node, mathWidget(text, node), !!line);
+				widget(line ?? node, mathWidget(text, node, macros), !!line);
 			} else if (node.kind === "env") {
 				environment(node, float, depth);
 			} else if (node.kind === "command") {
@@ -623,6 +664,7 @@ const noIndex: ProjectIndex = {
 	citations: new Map(),
 	includes: new Map(),
 	graphicsPaths: [],
+	definitions: new Map(),
 };
 
 /**
@@ -658,7 +700,21 @@ function isBlank(c: number): boolean {
 	return c === 32 || c === 9 || c === 13;
 }
 
-function mathWidget(text: string, node: MathNode): MathWidget {
+const noMacros: Macros = new Map();
+
+// A value macro used as `\Name`, or `\Name{}`, drawn as its value.
+function valueWidget(cmd: Command, macros: Macros): ValueWidget | undefined {
+	const macro = macros.get(cmd.name);
+	const [arg, ...rest] = cmd.args;
+	const bare =
+		!arg || (rest.length === 0 && !arg.bracket && arg.to - arg.from === 2);
+	const text = macro && bare ? macroValue(macro) : undefined;
+	return text === undefined
+		? undefined
+		: { kind: "value", name: cmd.name, text };
+}
+
+function mathWidget(text: string, node: MathNode, macros: Macros): MathWidget {
 	let tex = text.slice(node.bodyFrom, node.bodyTo).replace(labelPattern, "");
 	const env = node.env;
 	if (env && env !== "math" && env !== "displaymath") {
@@ -667,7 +723,10 @@ function mathWidget(text: string, node: MathNode): MathWidget {
 	} else {
 		tex = tex.trim();
 	}
-	return { kind: "math", tex, display: node.display };
+	const used = mathMacros(tex, macros);
+	return used
+		? { kind: "math", tex, display: node.display, macros: used }
+		: { kind: "math", tex, display: node.display };
 }
 
 // A citation or reference widget, when the command is complete.
@@ -741,7 +800,12 @@ function columns(spec: string): ("l" | "c" | "r")[] {
 // ponytail: cells know styles, math, citations and references; anything
 // else, `changes` markup and `\label` included, is a raw fragment. Teach
 // `fragments` more kinds when tables with tracked changes show up.
-function table(text: string, env: Env, index: ProjectIndex): Widget {
+function table(
+	text: string,
+	env: Env,
+	index: ProjectIndex,
+	macros: Macros,
+): Widget {
 	const spec = env.begin.args.at(-1);
 	const align =
 		spec && !spec.bracket
@@ -795,7 +859,7 @@ function table(text: string, env: Env, index: ProjectIndex): Widget {
 				if (s !== undefined) addText(s, styles);
 				else push({ kind: "raw", text: text.slice(node.from, node.to) });
 			} else if (node.kind === "math") {
-				push(mathWidget(text, node));
+				push(mathWidget(text, node, macros));
 			} else if (node.kind === "group") {
 				if (skipRuleArg) skipRuleArg = false;
 				else fragments(node.children, styles, false);
@@ -837,7 +901,9 @@ function table(text: string, env: Env, index: ProjectIndex): Widget {
 					if (span > 1) cell.span = span;
 					fragments(args[2].children, styles, false);
 				} else {
-					raw();
+					const v = valueWidget(node, macros);
+					if (v) push(v);
+					else raw();
 				}
 			}
 			// Comments, open/close delimiters and the like contribute nothing.

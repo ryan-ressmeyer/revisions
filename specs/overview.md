@@ -127,7 +127,7 @@ Revisions SHALL show the repository's files as a tree in a sidebar that can be f
 
 ### Requirement: Fully editable inline view
 
-Every part of the source SHALL be editable in the inline view. Revisions SHALL render sections, emphasis, lists, citations, cross-references, inline math, display equations, figures, tables, and `changes` markup. Unrecognized LaTeX SHALL appear inline as editable raw source. Moving the cursor into a rendered construct SHALL reveal its source. The exception is `changes` markup: its macro syntax SHALL stay hidden in the inline view even while the cursor is inside the changed text, show only in the raw source view, and be protected from edits that would remove part of it. Citations and cross-references SHALL show whether they resolve. Validity SHALL come from parsing the repository's `.bib` files and `\label` commands directly, so that it is available before the first build [7].
+Every part of the source SHALL be editable in the inline view. Revisions SHALL render sections, emphasis, lists, citations, cross-references, inline math, display equations, figures, tables, and `changes` markup. Unrecognized LaTeX SHALL appear inline as editable raw source. Moving the cursor into a rendered construct SHALL reveal its source. The exception is `changes` markup: its macro syntax SHALL stay hidden in the inline view even while the cursor is inside the changed text, show only in the raw source view, and be protected from edits that would remove part of it. Citations and cross-references SHALL show whether they resolve. Validity SHALL come from parsing the repository's `.bib` files and `\label` commands directly, so that it is available before the first build [7]. Macros the manuscript defines with `\newcommand`, `\renewcommand`, `\providecommand`, `\DeclareRobustCommand`, or a simple `\def`, in the entry file and the files it includes, SHALL be used to render math, a later definition winning. In prose, a use of such a macro that takes no arguments and stands for plain text or a number SHALL show that text, name the macro on hover, and reveal its source when the cursor enters it; other macros in prose stay raw source, and definitions stay as written [10].
 
 #### Scenario: Unknown macro
 
@@ -143,6 +143,11 @@ Every part of the source SHALL be editable in the inline view. Revisions SHALL r
 
 - WHEN a `\cite` key matches no bibliography entry
 - THEN the inline view marks that citation as unresolved
+
+#### Scenario: Manuscript macros
+
+- WHEN a file the preamble inputs defines `\newcommand{\NumNeurons}{83}` and `\newcommand{\Gain}{G_{\text{post}}}`, and the text uses `\NumNeurons{}` in prose and `$\Gain$` in math
+- THEN the prose shows 83 and names `\NumNeurons` on hover, and the formula renders without an error
 
 ### Requirement: Single line breaks flow
 

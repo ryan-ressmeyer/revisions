@@ -79,11 +79,12 @@ func TestProjectListsTrackedAndUntrackedFilesWithKinds(t *testing.T) {
 		"main.tex":             got["main.tex"],
 		"refs.bib":             got["refs.bib"],
 		"sections/methods.tex": got["sections/methods.tex"],
+		"stats.tex":            got["stats.tex"],
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("files:\n got %v\nwant %v", got, want)
 	}
-	for _, p := range []string{"main.tex", "refs.bib", "sections/methods.tex"} {
+	for _, p := range []string{"main.tex", "refs.bib", "sections/methods.tex", "stats.tex"} {
 		if got[p].Kind != "text" || got[p].Size == 0 {
 			t.Errorf("%s = %+v, want a text file", p, got[p])
 		}

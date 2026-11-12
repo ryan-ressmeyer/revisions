@@ -417,7 +417,7 @@ func TestStateReportsHashesBuildAndGit(t *testing.T) {
 
 	st := decode[stateBody](t, api(t, s, "GET", R+"/state", nil))
 	want := map[string]string{}
-	for _, path := range []string{"main.tex", "supplement.tex", "refs.bib", "sections/methods.tex"} {
+	for _, path := range []string{"main.tex", "supplement.tex", "refs.bib", "sections/methods.tex", "stats.tex"} {
 		data, _ := os.ReadFile(filepath.Join(root, filepath.FromSlash(path)))
 		want[path] = sha(data)
 	}

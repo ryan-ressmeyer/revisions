@@ -196,12 +196,14 @@ export function ProjectView({
 	const isTex = file?.path.endsWith(".tex") ?? false;
 	const rich = mode === "rich" && isTex;
 	const openCommentRef = useRef(() => {});
+	const entry = project?.entry ?? "";
 	const extensions = useMemo(() => {
 		const path = file?.path;
 		return [
 			rich && path
 				? richView({
 						path,
+						entry,
 						sources: sourceFiles,
 						repoFiles: repoPaths,
 						figure: (p) => figureUrl(id, p),
@@ -229,6 +231,7 @@ export function ProjectView({
 		];
 	}, [
 		file?.path,
+		entry,
 		rich,
 		markup,
 		isTex,

@@ -5,6 +5,7 @@ const paths = [
 	"main.tex",
 	"supplement.tex",
 	"sections/methods.tex",
+	"stats.tex",
 	"refs.bib",
 ];
 

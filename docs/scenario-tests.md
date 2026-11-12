@@ -43,6 +43,7 @@ Every Scenario in `specs/overview.md`, grouped by Requirement, with the automate
 | Unknown macro | `web/src/core/latex/plan.test.ts: "Unknown macro: an unrecognised command gets no decorations"`; `web/e2e/rich.spec.ts: "Unknown macro: shows as raw source that is editable in place"` |
 | Cursor entry | `web/src/core/latex/plan.test.ts: "Cursor entry: a selection inside a display equation reveals only that equation"`; `web/e2e/rich.spec.ts: "Cursor entry: a display equation shows its source while the cursor is in it"` |
 | Unresolved citation | `web/src/core/latex/plan.test.ts: "Unresolved citation: keys and labels resolve against the repository"`; `web/e2e/rich.spec.ts: "Unresolved citation: chips say whether keys resolve, across files and before a build"` |
+| Manuscript macros | `web/src/core/latex/macros.test.ts` (every definition form, include order, hostile definitions, macros for KaTeX, values); `web/src/core/latex/plan.test.ts: "the fixture: stats from an \\input file in the preamble reach an included section"`, `"a value macro in prose is drawn as its value, in all three forms"`, `"math carries the macros it uses, and a changed definition changes the widget"`; `web/e2e/rich.spec.ts: "User macros: formulas use the manuscript's definitions, values show in prose, and a changed definition redraws"` |
 
 ## Single line breaks flow
 

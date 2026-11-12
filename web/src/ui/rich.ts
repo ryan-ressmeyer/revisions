@@ -25,10 +25,12 @@ import {
 	type Primitive,
 	type RefWidget,
 	revealSelection,
+	type ValueWidget,
 	type Widget,
 } from "../core/latex/plan";
 import {
 	buildIndex,
+	definedMacros,
 	type ProjectIndex,
 	resolveGraphicsPath,
 	type SourceFile,
@@ -37,6 +39,8 @@ import {
 export interface RichConfig {
 	/** The open file's repository path. */
 	path: string;
+	/** The project's entry file, or "" when it has none. */
+	entry: string;
 	/** The project's other `.tex` and `.bib` files, as last loaded. */
 	sources: () => readonly SourceFile[];
 	/** Every file path in the repository. */
@@ -67,8 +71,9 @@ export function richView(config: RichConfig): Extension {
 			...config.sources().filter((f) => f.path !== config.path),
 			{ path: config.path, text },
 		]);
+		const macros = definedMacros(index, config.entry, config.path);
 		return {
-			plan: buildPlan(text, index, { markup: config.markup }),
+			plan: buildPlan(text, index, { markup: config.markup, macros }),
 			index,
 		};
 	};
@@ -312,9 +317,11 @@ function el<K extends keyof HTMLElementTagNameMap>(
 function widgetDOM(w: Widget): HTMLElement {
 	switch (w.kind) {
 		case "math":
-			return mathDOM(w.tex, w.display);
+			return mathDOM(w.tex, w.display, w.macros);
 		case "cite":
 			return citeDOM(w);
+		case "value":
+			return valueDOM(w);
 		case "ref":
 			return refDOM(w);
 		case "label": {
@@ -350,14 +357,18 @@ function widgetDOM(w: Widget): HTMLElement {
 }
 
 // ponytail: rendered formulas are kept for the page's lifetime, keyed by
-// their LaTeX; a manuscript has hundreds, not millions. Add an LRU bound if
-// memory ever shows it.
+// their LaTeX and the macro definitions they use; a manuscript has hundreds,
+// not millions. Add an LRU bound if memory ever shows it.
 const formulas = new Map<string, HTMLElement>();
 
-/** A rendered formula. KaTeX runs once per distinct formula; scrolling a
- * formula back into view clones the cached DOM. */
-function mathDOM(tex: string, display: boolean): HTMLElement {
-	const key = `${display ? "D" : "I"}${tex}`;
+/** A rendered formula. KaTeX runs once per distinct formula and definitions;
+ * scrolling a formula back into view clones the cached DOM. */
+function mathDOM(
+	tex: string,
+	display: boolean,
+	macros?: Record<string, string>,
+): HTMLElement {
+	const key = `${display ? "D" : "I"}${tex}${macros ? `\0${JSON.stringify(macros)}` : ""}`;
 	let e = formulas.get(key);
 	if (!e) {
 		e = el(
@@ -370,6 +381,8 @@ function mathDOM(tex: string, display: boolean): HTMLElement {
 				throwOnError: false,
 				trust: false,
 				output: "html",
+				// A copy: KaTeX writes a \gdef in the formula into it.
+				macros: { ...macros },
 			});
 			e.setAttribute("role", "img");
 			e.setAttribute("aria-label", tex);
@@ -381,6 +394,12 @@ function mathDOM(tex: string, display: boolean): HTMLElement {
 		formulas.set(key, e);
 	}
 	return e.cloneNode(true) as HTMLElement;
+}
+
+function valueDOM(w: ValueWidget): HTMLElement {
+	const e = el("span", "rich-value", w.text);
+	e.title = `\\${w.name}`;
+	return e;
 }
 
 function keyDOM(
@@ -441,9 +460,11 @@ function fragmentDOM(f: Fragment): Node {
 			return node;
 		}
 		case "math":
-			return mathDOM(f.tex, false);
+			return mathDOM(f.tex, false, f.macros);
 		case "cite":
 			return citeDOM(f);
+		case "value":
+			return valueDOM(f);
 		case "ref":
 			return refDOM(f);
 		case "raw":

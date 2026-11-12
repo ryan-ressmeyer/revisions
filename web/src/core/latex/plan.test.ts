@@ -7,7 +7,7 @@ import {
 	type Primitive,
 	revealSelection,
 } from "./plan";
-import { buildIndex, type SourceFile } from "./project";
+import { buildIndex, definedMacros, type SourceFile } from "./project";
 
 const bib: SourceFile = { path: "refs.bib", text: "@article{a,\n}" };
 
@@ -710,6 +710,128 @@ describe("preamble and body", () => {
 		const plan = planOf(text);
 		expect(plan.bodyStart).toBe(text.length);
 		expect(plan.primitives).toEqual([]);
+	});
+});
+
+describe("user macros", () => {
+	const preamble = [
+		"\\documentclass{article}",
+		"\\newcommand{\\Units}{962}",
+		"\\newcommand{\\Ci}{[-0.009, +0.004]}",
+		"\\newcommand{\\Cpsth}{\\Sigma_{\\text{PSTH}}}",
+		"\\newcommand{\\ph}[1]{\\textbf{[#1]}}",
+		"\\begin{document}",
+		"",
+	].join("\n");
+	const planWith = (body: string, more = "") => {
+		const text = `${preamble.replace("\\begin", `${more}\\begin`)}${body}`;
+		const index = buildIndex([{ path: "main.tex", text }]);
+		const macros = definedMacros(index, "main.tex", "main.tex");
+		return { text, plan: buildPlan(text, index, { macros }) };
+	};
+
+	test("a value macro in prose is drawn as its value, in all three forms", () => {
+		const { text, plan } = planWith(
+			"n=\\Units units, \\Units{} cells, \\Units\\ trials, CI \\Ci.",
+		);
+		expect(show(text, widgets(plan))).toEqual([
+			["value", "\\Units"],
+			["value", "\\Units{}"],
+			["value", "\\Units"],
+			["symbol", "\\ "],
+			["value", "\\Ci"],
+		]);
+		expect(widgets(plan)[0]?.widget).toEqual({
+			kind: "value",
+			name: "Units",
+			text: "962",
+		});
+		expect(widgets(plan)[4]?.widget).toMatchObject({
+			text: "[-0.009, +0.004]",
+		});
+	});
+
+	test("the cursor in a drawn value reveals its source", () => {
+		const { text, plan } = planWith("We had \\Units{} cells.");
+		const at = text.indexOf("\\Units{}") + 2;
+		expect(widgets(revealSelection(plan, [{ from: at, to: at }]))).toEqual([]);
+	});
+
+	test("other user macros in prose, and a value with an argument, stay raw source", () => {
+		const { plan } = planWith("\\ph{todo} \\Cpsth and \\Units{x} \\Units[a].");
+		expect(plan.primitives).toEqual([]);
+	});
+
+	test("definitions in the body stay as written", () => {
+		const { plan } = planWith(
+			"\\newcommand{\\Later}{5}\\renewcommand{\\Units}{7}\\def\\X{\\Units}",
+		);
+		expect(plan.primitives).toEqual([]);
+	});
+
+	test("math carries the macros it uses, and a changed definition changes the widget", () => {
+		const { text, plan } = planWith("$n=\\Units$ and $\\Cpsth$ and $x$.");
+		expect(widgetAt(text, plan, "$n=").widget).toEqual({
+			kind: "math",
+			tex: "n=\\Units",
+			display: false,
+			macros: { "\\Units": "962" },
+		});
+		expect(widgetAt(text, plan, "$\\Cpsth").widget).toMatchObject({
+			macros: { "\\Cpsth": "\\Sigma_{\\text{PSTH}}" },
+		});
+		expect(widgetAt(text, plan, "$x$").widget).toEqual({
+			kind: "math",
+			tex: "x",
+			display: false,
+		});
+
+		const changed = planWith(
+			"$n=\\Units$ and $\\Cpsth$ and $x$.",
+			"\\renewcommand{\\Units}{963}\n",
+		);
+		const at = (p: typeof changed, s: string) =>
+			JSON.stringify(widgetAt(p.text, p.plan, s).widget);
+		const before = { text, plan };
+		expect(at(changed, "$n=")).not.toBe(at(before, "$n="));
+		expect(at(changed, "$\\Cpsth")).toBe(at(before, "$\\Cpsth"));
+	});
+
+	test("the fixture: stats from an \\input file in the preamble reach an included section", () => {
+		const methods = fixture("sections/methods.tex");
+		const index = buildIndex(fixtureFiles);
+		const macros = definedMacros(index, "main.tex", "sections/methods.tex");
+		const plan = buildPlan(methods, index, { macros });
+		expect(widgetAt(methods, plan, "\\NumNeurons{}").widget).toEqual({
+			kind: "value",
+			name: "NumNeurons",
+			text: "83",
+		});
+		expect(widgetAt(methods, plan, "$\\Gain$").widget).toMatchObject({
+			macros: { "\\Gain": "G_{\\text{post}}" },
+		});
+		// \vdeg takes an argument, so it stays an unknown macro in prose.
+		const from = methods.indexOf("\\vdeg{1}");
+		expect(
+			plan.primitives.filter((p) => p.from < from + 8 && p.to > from),
+		).toEqual([]);
+	});
+
+	test("a value macro in a table cell is drawn as its value", () => {
+		const { text, plan } = planWith(
+			"\\begin{tabular}{ll}\nUnits & \\Units \\\\\n\\end{tabular}",
+		);
+		const table = widgetAt(text, plan, "\\begin{tabular}").widget;
+		expect(table).toMatchObject({
+			rows: [
+				{
+					cells: [
+						{ content: [{ kind: "text", text: "Units" }] },
+						{ content: [{ kind: "value", name: "Units", text: "962" }] },
+					],
+				},
+			],
+		});
 	});
 });
 
