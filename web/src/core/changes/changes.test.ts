@@ -7,6 +7,7 @@ import {
 	addComment,
 	addHighlight,
 	applyEdits,
+	ensureInlineNotes,
 	ensurePreamble,
 	escapeComment,
 	type Outcome,
@@ -14,6 +15,7 @@ import {
 	rejectChange,
 	resolveComment,
 	unescapeComment,
+	whyNotWrap,
 } from "./changes";
 
 const doc = [
@@ -132,7 +134,6 @@ test("a comment is refused, with a reason, where it cannot be wrapped safely", (
 			"whole environment",
 			find(doc, "\\begin{itemize}\n\\item one\n\\end{itemize}"),
 		],
-		["footnote text", find(doc, "foot words")],
 	];
 	for (const [label, range] of refused) {
 		const r = addComment(doc, range, "RR", "note");
@@ -159,6 +160,24 @@ test("a comment may cover formatting, whole math, citations and tracked changes"
 	).toBe(true);
 });
 
+test("a comment may go in a footnote or a caption, where the preamble block draws it inline", () => {
+	const text = [
+		"\\begin{document}",
+		"Text\\footnote{foot words}.",
+		"\\begin{figure}\\caption{cap words}\\end{figure}",
+		"\\end{document}",
+	].join("\n");
+	for (const needle of ["foot words", "cap words"]) {
+		expect(addComment(text, find(text, needle), "RR", "ok").ok, needle).toBe(
+			true,
+		);
+	}
+	expect(whyNotWrap(text, find(text, "foot words"), "track")).toBeUndefined();
+	expect(whyNotWrap(text, find(text, "cap words"), "track")).toMatch(
+		/not running text/,
+	);
+});
+
 test("Resolve comment: the \\highlight is removed and its text kept byte for byte", () => {
 	const inner = "a \\added[id=AB]{b}\r\n $x$ \\parencite{k}";
 	const text = `Before \\highlight[id=RR, comment={why?}]{${inner}} after.`;
@@ -176,7 +195,19 @@ test("resolving a standalone \\comment removes it entirely", () => {
 	expect(applyEdits(text, resolveComment(change))).toBe("Before  after.");
 });
 
-test("Package not loaded: \\usepackage{changes} and the author go just before \\begin{document}", () => {
+// The block ensurePreamble writes, as lines.
+const inline = [
+	"% Added by Revisions: draw comments inline where LaTeX cannot place a margin note.",
+	"\\ifdefined\\setuptodonotes\\ifdefined\\AddToHook",
+	"\\AddToHook{cmd/todo/before}{\\ifinner\\setuptodonotes{inline, inlinewidth=10em}\\fi}% boxes, table cells",
+	"\\AddToHook{cmd/@arrayparboxrestore/after}{\\setuptodonotes{inline}}% floats, footnotes",
+	"\\AddToHook{env/abstract/begin}{\\setuptodonotes{inline}}% abstracts",
+	"\\AddToHook{env/frontmatter/begin}{\\setuptodonotes{inline}}% elsarticle title block",
+	"\\fi\\fi",
+];
+const block = (eol = "\n") => inline.map((l) => l + eol).join("");
+
+test("Package not loaded: \\usepackage{changes}, the inline-notes block and the author go just before \\begin{document}", () => {
 	const text = fixture("main.tex");
 	const at = text.indexOf("\\begin{document}");
 	const out = applyEdits(
@@ -184,7 +215,7 @@ test("Package not loaded: \\usepackage{changes} and the author go just before \\
 		ensurePreamble(text, { id: "RR", name: "Ryan R." }),
 	);
 	expect(out).toBe(
-		`${text.slice(0, at)}\\usepackage{changes}\n\\definechangesauthor[name={Ryan R.}, color=blue]{RR}\n${text.slice(at)}`,
+		`${text.slice(0, at)}\\usepackage{changes}\n${block()}\\definechangesauthor[name={Ryan R.}, color=blue]{RR}\n${text.slice(at)}`,
 	);
 	expect(ensurePreamble(out, { id: "RR", name: "Ryan R." })).toEqual([]);
 });
@@ -193,6 +224,7 @@ test("New author: a preamble that loads changes gets only the author, in the nex
 	const text = [
 		"\\documentclass{article}",
 		"\\usepackage[final]{xcolor, changes}",
+		block().trimEnd(),
 		"\\definechangesauthor[name={Ada}, color=blue]{AB}",
 		"% \\definechangesauthor{RR}",
 		"\\begin{document}",
@@ -203,17 +235,67 @@ test("New author: a preamble that loads changes gets only the author, in the nex
 		text,
 		ensurePreamble(text, { id: "RR", name: "R_R & {co}" }),
 	);
-	expect(out).toContain(
-		"% \\definechangesauthor{RR}\n\\definechangesauthor[name={R\\_R \\& \\{co\\}}, color=red]{RR}\n\\begin{document}",
+	expect(out).toBe(
+		text.replace(
+			"\\begin{document}",
+			"\\definechangesauthor[name={R\\_R \\& \\{co\\}}, color=red]{RR}\n\\begin{document}",
+		),
 	);
-	expect(out).not.toContain("\\usepackage{changes}");
+});
+
+test("a preamble that loads changes with options but has no block gets it on the next line, once", () => {
+	const text = [
+		"\\documentclass{elsarticle}",
+		"\\usepackage[markup=underlined, commentmarkup=todo]{xcolor,changes} % review",
+		"\\usepackage{amsmath}",
+		"\\definechangesauthor[name={Gale Harper}, color=blue]{GH}",
+		"\\begin{document}",
+		"x",
+		"\\end{document}",
+	].join("\n");
+	const author = { id: "GH", name: "Gale Harper" };
+	const out = applyEdits(text, ensurePreamble(text, author));
+	expect(out).toBe(text.replace("% review\n", `% review\n${block()}`));
+	expect(ensurePreamble(out, author)).toEqual([]);
+	expect(ensureInlineNotes(out)).toEqual([]);
+	// The repair adds only the block.
+	expect(applyEdits(text, ensureInlineNotes(text))).toBe(out);
+});
+
+test("the block keeps CRLF line endings and every existing byte", () => {
+	const text =
+		"\\documentclass{article}\r\n\\usepackage{changes}\r\n\\begin{document}\r\nx\r\n\\end{document}\r\n";
+	const out = applyEdits(text, ensurePreamble(text, { id: "RR", name: "R" }));
+	const at = text.indexOf("\\begin{document}");
+	expect(out).toBe(
+		`${text.slice(0, at)}${block("\r\n")}\\definechangesauthor[name={R}, color=blue]{RR}\r\n${text.slice(at)}`,
+	);
+	const fresh =
+		"\\documentclass{article}\r\n\\begin{document}\r\nx\r\n\\end{document}\r\n";
+	expect(
+		applyEdits(fresh, ensurePreamble(fresh, { id: "RR", name: "R" })),
+	).toBe(
+		fresh.replace(
+			"\\begin{document}",
+			`\\usepackage{changes}\r\n${block("\r\n")}\\definechangesauthor[name={R}, color=blue]{RR}\r\n\\begin{document}`,
+		),
+	);
+});
+
+test("a \\usepackage{changes} on the \\begin{document} line gets the block on lines of its own", () => {
+	const text =
+		"\\documentclass{article}\\usepackage{changes}\\begin{document}x\\end{document}";
+	expect(applyEdits(text, ensureInlineNotes(text))).toBe(
+		`\\documentclass{article}\\usepackage{changes}\n${block()}\\begin{document}x\\end{document}`,
+	);
+	expect(ensureInlineNotes("no document here")).toEqual([]);
 });
 
 test("a commented-out \\usepackage{changes} does not count, and odd layouts still get their own lines", () => {
 	const text =
 		"\\documentclass{article}\n% \\usepackage{changes}\n\\usepackage{x}\\begin{document}\nx\n\\end{document}";
 	expect(applyEdits(text, ensurePreamble(text, { id: "RR", name: "R" }))).toBe(
-		"\\documentclass{article}\n% \\usepackage{changes}\n\\usepackage{x}\n\\usepackage{changes}\n\\definechangesauthor[name={R}, color=blue]{RR}\n\\begin{document}\nx\n\\end{document}",
+		`\\documentclass{article}\n% \\usepackage{changes}\n\\usepackage{x}\n\\usepackage{changes}\n${block()}\\definechangesauthor[name={R}, color=blue]{RR}\n\\begin{document}\nx\n\\end{document}`,
 	);
 	expect(ensurePreamble("no document here", { id: "RR", name: "R" })).toEqual(
 		[],

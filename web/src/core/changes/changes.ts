@@ -205,14 +205,95 @@ const palette = [
 ];
 
 /**
- * Edits to the entry file's text so that `author` can write changes markup:
- * `\usepackage{changes}` when no uncommented `\usepackage[…]{…}` loads the
- * package, and `\definechangesauthor[name={…}, color=…]{<id>}` when that ID
- * is not declared yet. Both go on their own lines immediately before
- * `\begin{document}`, package first, as one edit. The colour is the next
- * one in a fixed palette of xcolor names, by how many authors the preamble
- * already declares. No edits when nothing is missing or the text has no
- * `\begin{document}`.
+ * The preamble block that keeps comments compiling where LaTeX cannot place
+ * a margin note. `changes` draws a comment as a todonotes margin note, a
+ * float, which fails inside a float, a box, a table cell, a footnote or a
+ * boxed abstract. The block switches todonotes to inline notes there and
+ * only there: in inner (box) mode, such as `\fbox` or an `l` table cell,
+ * where a 10em note keeps the box from running off the page; after
+ * `\@arrayparboxrestore`, which floats, minipages, `\parbox`, p columns and
+ * footnotes run inside their own group; in `abstract`; and in elsarticle's
+ * `frontmatter`. Each setting is local to that place, so body text after it
+ * keeps margin notes. It does nothing when todonotes is not loaded (another
+ * `commentmarkup`) or LaTeX predates hooks (2020-10). The first line marks
+ * it, so it is written once.
+ */
+const inlineNotes = [
+	"% Added by Revisions: draw comments inline where LaTeX cannot place a margin note.",
+	"\\ifdefined\\setuptodonotes\\ifdefined\\AddToHook",
+	"\\AddToHook{cmd/todo/before}{\\ifinner\\setuptodonotes{inline, inlinewidth=10em}\\fi}% boxes, table cells",
+	"\\AddToHook{cmd/@arrayparboxrestore/after}{\\setuptodonotes{inline}}% floats, footnotes",
+	"\\AddToHook{env/abstract/begin}{\\setuptodonotes{inline}}% abstracts",
+	"\\AddToHook{env/frontmatter/begin}{\\setuptodonotes{inline}}% elsarticle title block",
+	"\\fi\\fi",
+];
+
+interface Preamble {
+	/** Where `\begin{document}` starts. */
+	body: number;
+	/** The start of the line after the `\usepackage` that loads changes, at most `body`. */
+	changes?: number;
+	/** Whether the preamble holds the {@link inlineNotes} block. */
+	inline: boolean;
+	/** How many `\definechangesauthor` lines there are. */
+	authors: number;
+	ids: Set<string>;
+}
+
+function readPreamble(text: string): Preamble | undefined {
+	const nodes = scan(text).children;
+	const body = documentEnv(nodes)?.from;
+	if (body === undefined) return undefined;
+	const p: Preamble = {
+		body,
+		inline: text.slice(0, body).includes(inlineNotes[0] ?? ""),
+		authors: 0,
+		ids: new Set(),
+	};
+	for (const n of nodes) {
+		if (n.from >= body) break;
+		const arg = n.kind === "command" ? n.args[1] : undefined;
+		if (n.kind !== "command" || !arg?.closed) continue;
+		const value = text.slice(arg.from + 1, arg.to - 1);
+		if (n.name === "usepackage" && p.changes === undefined) {
+			if (value.split(",").some((name) => name.trim() === "changes")) {
+				const eol = text.indexOf("\n", n.to);
+				p.changes = eol < 0 ? body : Math.min(eol + 1, body);
+			}
+		} else if (n.name === "definechangesauthor") {
+			p.authors++;
+			p.ids.add(value.trim());
+		}
+	}
+	return p;
+}
+
+// An edit that inserts `lines` at `at` as whole lines, with the line ending
+// of the line before.
+function insertLines(text: string, at: number, lines: string[]): Edit {
+	const nl = text.lastIndexOf("\n", at - 1);
+	const eol = nl > 0 && text[nl - 1] === "\r" ? "\r\n" : "\n";
+	const lead = at > 0 && text[at - 1] !== "\n" ? eol : "";
+	return {
+		from: at,
+		to: at,
+		insert: lead + lines.map((line) => line + eol).join(""),
+	};
+}
+
+/**
+ * Edits to the entry file's text so that `author` can write changes markup
+ * and comments compile everywhere: `\usepackage{changes}` when no
+ * uncommented `\usepackage[…]{…}` loads the package; the block that draws
+ * comments inline where a margin note cannot go (see
+ * {@link ensureInlineNotes}) when it is missing; and
+ * `\definechangesauthor[name={…}, color=…]{<id>}` when that ID is not
+ * declared yet. The package, the block and the author go on their own lines
+ * immediately before `\begin{document}`, in that order, except that the
+ * block goes on the line after a `\usepackage` that already loads changes.
+ * The colour is the next one in a fixed palette of xcolor names, by how many
+ * authors the preamble already declares. No edits when nothing is missing or
+ * the text has no `\begin{document}`.
  *
  * The entry file is often not the file being edited: apply these edits to
  * the entry file's own text before (or together with) the first comment or
@@ -223,34 +304,38 @@ export function ensurePreamble(
 	entryText: string,
 	author: { id: string; name: string },
 ): Edit[] {
-	const nodes = scan(entryText).children;
-	const body = documentEnv(nodes);
-	if (!body) return [];
-	let loaded = false;
-	let defined = false;
-	let authors = 0;
-	for (const n of nodes) {
-		if (n.from >= body.from) break;
-		const arg = n.kind === "command" ? n.args[1] : undefined;
-		if (n.kind !== "command" || !arg?.closed) continue;
-		const value = entryText.slice(arg.from + 1, arg.to - 1);
-		if (n.name === "usepackage") {
-			loaded ||= value.split(",").some((name) => name.trim() === "changes");
-		} else if (n.name === "definechangesauthor") {
-			authors++;
-			defined ||= value.trim() === author.id;
-		}
+	const p = readPreamble(entryText);
+	if (!p) return [];
+	const edits: Edit[] = [];
+	const lines: string[] = [];
+	if (p.changes === undefined) {
+		lines.push("\\usepackage{changes}");
+		if (!p.inline) lines.push(...inlineNotes);
+	} else if (!p.inline) {
+		edits.push(insertLines(entryText, p.changes, inlineNotes));
 	}
-	let insert = "";
-	if (!loaded) insert += "\\usepackage{changes}\n";
-	if (!defined) {
-		const color = palette[authors % palette.length];
-		insert += `\\definechangesauthor[name={${escapeComment(author.name)}}, color=${color}]{${author.id}}\n`;
+	if (!p.ids.has(author.id)) {
+		const color = palette[p.authors % palette.length];
+		lines.push(
+			`\\definechangesauthor[name={${escapeComment(author.name)}}, color=${color}]{${author.id}}`,
+		);
 	}
-	if (!insert) return [];
-	if (body.from > 0 && entryText[body.from - 1] !== "\n")
-		insert = `\n${insert}`;
-	return [{ from: body.from, to: body.from, insert }];
+	if (lines.length > 0) edits.push(insertLines(entryText, p.body, lines));
+	return edits;
+}
+
+/**
+ * The edit that adds only the block drawing comments inline where LaTeX
+ * cannot place a margin note: on the line after the `\usepackage` that loads
+ * changes, or else just before `\begin{document}`. For a manuscript that
+ * already has comments and fails to build; {@link ensurePreamble} adds it
+ * with the first comment. No edits when the block is there or the text has
+ * no `\begin{document}`.
+ */
+export function ensureInlineNotes(entryText: string): Edit[] {
+	const p = readPreamble(entryText);
+	if (!p || p.inline) return [];
+	return [insertLines(entryText, p.changes ?? p.body, inlineNotes)];
 }
 
 function documentEnv(nodes: Node[]): Env | undefined {
@@ -299,7 +384,8 @@ const cut =
  *
  * The range must lie in the document body (not the preamble), stay within
  * one paragraph, sit in prose (plain text, a plain `{…}` group, the argument
- * of a text style such as `\emph`, `\footnote` for tracking, the new text of
+ * of a text style such as `\emph`, `\footnote`, `\caption` for a comment
+ * (the {@link ensurePreamble} block draws it inline), the new text of
  * `\added` or `\replaced`, or the text of `\highlight` for tracking), and not
  * cut through a command, group, math, comment, or environment boundary, nor
  * sit in a list before its first `\item`. What
@@ -408,7 +494,8 @@ function prose(
 	kind: WrapKind,
 ): boolean {
 	if (textCommands.has(cmd.name)) return true;
-	if (cmd.name === "footnote") return kind === "track";
+	if (cmd.name === "footnote") return true;
+	if (cmd.name === "caption") return kind === "comment";
 	const change = changeOf(text, cmd);
 	if (change?.text.from !== argFrom + 1) return false;
 	if (change.kind === "added" || change.kind === "replaced") return true;

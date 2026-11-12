@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import {
 	expect,
+	inlineNotes,
 	openFromTree,
 	openPaper,
 	type Server,
@@ -19,7 +20,7 @@ const original = readFileSync(
 const withPreamble = (text: string) =>
 	text.replace(
 		"\\begin{document}",
-		"\\usepackage{changes}\n\\definechangesauthor[name={Gale Harper}, color=blue]{GH}\n\\begin{document}",
+		`\\usepackage{changes}\n${inlineNotes}\n\\definechangesauthor[name={Gale Harper}, color=blue]{GH}\n\\begin{document}`,
 	);
 
 const editor = (page: Page) => page.getByRole("textbox", { name: "Source" });
@@ -620,6 +621,32 @@ test("A comment and a tracked change added in the browser build into a PDF", asy
 	await expect(page.getByText("The PDF could not be built")).toHaveCount(0);
 	await showSource(page);
 	await expect(editor(page).getByText("\\highlight[id=GH")).toBeVisible();
+});
+
+test("Add comment: a comment in a table caption is drawn inline and the PDF builds", async ({
+	page,
+	server,
+}) => {
+	test.setTimeout(90_000);
+	await openPaper(page);
+	await select(page, "Response gain by stimulus contrast");
+	await page.getByRole("button", { name: "Comment" }).click();
+	await page.getByLabel("Your comment").fill("Which units?");
+	await page.getByRole("button", { name: "Add comment" }).click();
+	await confirmAuthor(page);
+	await expect
+		.poll(() => onDisk(server))
+		.toBe(
+			withPreamble(original).replace(
+				"Response gain by stimulus contrast",
+				"\\highlight[id=GH, comment={Which units?}]{Response gain by stimulus contrast}",
+			),
+		);
+	await page.getByRole("button", { name: "Build PDF" }).click();
+	await expect(page.locator('[data-page="1"] canvas')).toHaveCount(1, {
+		timeout: 60_000,
+	});
+	await expect(page.getByText("The PDF could not be built")).toHaveCount(0);
 });
 
 // A manuscript shaped like the one that showed text popping in while

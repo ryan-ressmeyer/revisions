@@ -243,3 +243,14 @@ async function waitForPing(url: string, child: { exitCode: number | null }) {
 	}
 	throw new Error(`bin/revisions did not start at ${url}; run make build`);
 }
+
+/** The block that draws comments inline where a margin note cannot go. */
+export const inlineNotes = [
+	"% Added by Revisions: draw comments inline where LaTeX cannot place a margin note.",
+	"\\ifdefined\\setuptodonotes\\ifdefined\\AddToHook",
+	"\\AddToHook{cmd/todo/before}{\\ifinner\\setuptodonotes{inline, inlinewidth=10em}\\fi}% boxes, table cells",
+	"\\AddToHook{cmd/@arrayparboxrestore/after}{\\setuptodonotes{inline}}% floats, footnotes",
+	"\\AddToHook{env/abstract/begin}{\\setuptodonotes{inline}}% abstracts",
+	"\\AddToHook{env/frontmatter/begin}{\\setuptodonotes{inline}}% elsarticle title block",
+	"\\fi\\fi",
+].join("\n");

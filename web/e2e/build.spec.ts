@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import {
 	expect,
+	inlineNotes,
 	openFileName,
 	openFromTree,
 	openPaper,
@@ -243,6 +244,57 @@ test("Comment where a margin note cannot go: the failure says why and opens the 
 		.click();
 	await expect(openFileName(page)).toHaveText("main.tex");
 	await expect.poll(() => cursorLine(page)).toBe(String(line));
+});
+
+test("Comment where a margin note cannot go: one click adds the inline block to the preamble and the build succeeds", async ({
+	page,
+	server,
+}) => {
+	test.setTimeout(150_000);
+	await openPaper(page);
+	const main = join(server.paper, "main.tex");
+	// The owner's state: changes loaded, an author, a comment in a float, no block.
+	const text = readFileSync(main, "utf8")
+		.replace(
+			"\\begin{document}",
+			"\\usepackage{changes}\n\\definechangesauthor{GH}\n\\begin{document}",
+		)
+		.replace(
+			"\\centering\n  \\includegraphics",
+			"\\centering\n  \\highlight[id=GH, comment={Check the axis}]{Trace.}\n  \\includegraphics",
+		);
+	writeFileSync(main, text);
+
+	await page.getByRole("button", { name: "Build PDF" }).click();
+	const problems = page.getByRole("alert").filter({
+		hasText: "The PDF could not be built",
+	});
+	await expect(problems).toContainText("Float(s) lost", { timeout: 60_000 });
+	await problems
+		.getByRole("button", {
+			name: "Show these comments inside the text and build",
+		})
+		.click();
+	await expect
+		.poll(() => readFileSync(main, "utf8"))
+		.toBe(
+			text.replace(
+				"\\usepackage{changes}\n",
+				`\\usepackage{changes}\n${inlineNotes}\n`,
+			),
+		);
+	await expect(page.locator('[data-page="1"] canvas')).toHaveCount(1, {
+		timeout: 60_000,
+	});
+	await expect(page.getByText("The PDF could not be built")).toHaveCount(0);
+
+	// An ordinary edit, shown in Changes & history.
+	await page.getByRole("button", { name: /Changes & history/ }).click();
+	const panel = page.getByRole("region", { name: "Changes & history" });
+	await panel.getByRole("button", { name: /Uncommitted changes/ }).click();
+	await expect(
+		panel.locator(".diff-add").filter({ hasText: "% Added by Revisions" }),
+	).toHaveCount(1);
 });
 
 test.describe("without TeX", () => {

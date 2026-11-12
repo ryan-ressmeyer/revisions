@@ -64,6 +64,7 @@ Every Scenario in `specs/overview.md`, grouped by Requirement, with the automate
 |---|---|
 | Add comment | `web/src/core/changes/changes.test.ts: "Add comment: the selection is wrapped in a \\highlight with the author ID and comment"`; `web/e2e/rich.spec.ts: "Add comment, New author, Package not loaded: the first comment declares the author and loads changes"`, `"Add comment: a refused selection says why"` |
 | Resolve comment | `web/src/core/changes/changes.test.ts: "Resolve comment: the \\highlight is removed and its text kept byte for byte"`; `web/e2e/rich.spec.ts: "Resolve comment: the macro goes and the text stays"` |
+| Comment in a caption | `web/src/core/changes/changes.test.ts: "a comment may go in a footnote or a caption, where the preamble block draws it inline"`; `web/src/core/changes/compile.test.ts: "a comment in each place that cannot hold a margin note compiles inline, and body comments after it stay in the margin"` (each installed engine; every place with a following body comment), `"elsarticle: comments in the abstract and keywords in frontmatter compile inline"`, `"amsart: a comment in the abstract compiles inline"`, `"the block does nothing without todonotes or the hook system, and breaks nothing"`; `web/e2e/rich.spec.ts: "Add comment: a comment in a table caption is drawn inline and the PDF builds"` |
 | Highlight without a comment | `web/src/core/changes/changes.test.ts: "Highlight: the selection is wrapped in a \\highlight with the author ID and no comment"`, `"Highlight: refused for the same selections as a comment"`; `web/src/core/changes/compile.test.ts` (builds one); `web/e2e/rich.spec.ts: "Highlight: marks the selection with no comment, and Remove takes it away"` |
 
 ## Author identity
@@ -71,7 +72,8 @@ Every Scenario in `specs/overview.md`, grouped by Requirement, with the automate
 | Scenario | Test |
 |---|---|
 | New author | `web/src/core/changes/changes.test.ts: "New author: a preamble that loads changes gets only the author, in the next colour"`; `web/e2e/rich.spec.ts: "Add comment, New author, Package not loaded: the first comment declares the author and loads changes"` |
-| Package not loaded | `web/src/core/changes/changes.test.ts: "Package not loaded: \\usepackage{changes} and the author go just before \\begin{document}"`; `web/e2e/rich.spec.ts: "Add comment, New author, Package not loaded: the first comment declares the author and loads changes"` |
+| Package not loaded | `web/src/core/changes/changes.test.ts: "Package not loaded: \\usepackage{changes}, the inline-notes block and the author go just before \\begin{document}"`; `web/e2e/rich.spec.ts: "Add comment, New author, Package not loaded: the first comment declares the author and loads changes"` |
+| Package loaded without the block | `web/src/core/changes/changes.test.ts: "a preamble that loads changes with options but has no block gets it on the next line, once"`, `"the block keeps CRLF line endings and every existing byte"`, `"a \\usepackage{changes} on the \\begin{document} line gets the block on lines of its own"` |
 
 ## Tracked changes toggle
 
@@ -137,6 +139,7 @@ Every Scenario in `specs/overview.md`, grouped by Requirement, with the automate
 | Rebuild after a failure | `internal/build/build_test.go: TestRebuildAfterAFailureShowsTheErrorAgain`, `TestRecoveryAfterABiberFailure` |
 | Fixed after a failure | `internal/build/build_test.go: TestRebuildAfterAFailureShowsTheErrorAgain`, `TestRecoveryAfterABiberFailure` (skipped without biber) |
 | Comment where a margin note cannot go | `web/src/core/changes/notes.test.ts: "a comment where a margin note cannot go is explained and named, with its file and line"`, `"Not in outer par mode is explained the same way"`, `"nothing to explain for other errors, or for a document without comments"`, `"comments only in ordinary text still get the explanation, with no names"`; `web/e2e/build.spec.ts: "Comment where a margin note cannot go: the failure says why and opens the comment"` |
+| Draw comments inline from a failed build | `web/src/core/changes/compile.test.ts: "without the block a comment in a figure stops the build with Float(s) lost, and adding the block fixes it"`; `web/e2e/build.spec.ts: "Comment where a margin note cannot go: one click adds the inline block to the preamble and the build succeeds"` |
 
 ## Local build isolation
 

@@ -174,7 +174,7 @@ The inline view SHALL stay responsive on a manuscript of the size of a full jour
 
 ### Requirement: Comments as `changes` macros
 
-Revisions SHALL store each comment as a `\highlight[id=…, comment={…}]{text}` macro in the source. Each comment SHALL stand alone with no replies or threads. A Resolve button SHALL remove the macro and keep the highlighted text [1, Q30]. The user SHALL also be able to highlight text without a comment, stored as `\highlight[id=…]{text}`, under the same rules; a Remove button takes it away as Resolve does [8].
+Revisions SHALL store each comment as a `\highlight[id=…, comment={…}]{text}` macro in the source. Each comment SHALL stand alone with no replies or threads. A Resolve button SHALL remove the macro and keep the highlighted text [1, Q30]. The user SHALL also be able to highlight text without a comment, stored as `\highlight[id=…]{text}`, under the same rules; a Remove button takes it away as Resolve does [8]. The `changes` package draws a comment as a margin note, which LaTeX cannot place inside a float, a box, a table cell, a footnote, a caption, or the boxed abstract of some journal templates. A comment SHALL stay a margin note in body text and SHALL be drawn inline, inside the text, only where a margin note cannot go. The switch SHALL live in the manuscript's preamble, so that the manuscript builds the same way outside Revisions: a block of whole lines, marked as added by Revisions, that Revisions writes once next to `\usepackage{changes}` and never duplicates. The block SHALL do nothing when the comments are not todonotes notes or LaTeX predates its hook system (2020-10). Comments SHALL be allowed in footnotes and captions [12].
 
 #### Scenario: Add comment
 
@@ -186,6 +186,11 @@ Revisions SHALL store each comment as a `\highlight[id=…, comment={…}]{text}
 - WHEN the user presses Resolve on a comment
 - THEN Revisions removes the `\highlight` macro and leaves the previously highlighted text unchanged
 
+#### Scenario: Comment in a caption
+
+- WHEN the user adds a comment to text in a figure or table caption and builds the PDF
+- THEN the build succeeds, the comment is drawn inline in the caption, and a comment in body text after it is still a margin note
+
 #### Scenario: Highlight without a comment
 
 - WHEN the user selects text and presses Highlight
@@ -193,7 +198,7 @@ Revisions SHALL store each comment as a `\highlight[id=…, comment={…}]{text}
 
 ### Requirement: Author identity
 
-Revisions SHALL use the author ID from its settings for `changes` markup, suggesting a default from the GitHub account. It SHALL add a `\definechangesauthor` line to the preamble when the author is not yet defined. It SHALL add `\usepackage{changes}` to the preamble when the manuscript does not load the package [7].
+Revisions SHALL use the author ID from its settings for `changes` markup, suggesting a default from the GitHub account. It SHALL add a `\definechangesauthor` line to the preamble when the author is not yet defined. It SHALL add `\usepackage{changes}` to the preamble when the manuscript does not load the package [7], and the block that draws comments inline where a margin note cannot go when the preamble lacks it, including in a manuscript that already loads `changes` [12].
 
 #### Scenario: New author
 
@@ -204,6 +209,11 @@ Revisions SHALL use the author ID from its settings for `changes` markup, sugges
 
 - WHEN a user adds a comment or tracked change to a manuscript that does not load `changes`
 - THEN Revisions adds `\usepackage{changes}` to the preamble
+
+#### Scenario: Package loaded without the block
+
+- WHEN a user adds a comment to a manuscript that loads `changes`, with or without options, but has no inline-notes block
+- THEN Revisions adds the block on the line after that `\usepackage`, keeping every existing byte and the file's line endings, and adds nothing on later comments
 
 ### Requirement: Tracked changes toggle
 
@@ -309,7 +319,7 @@ Revisions SHALL offer Quit Revisions in Settings, because the installed app has 
 
 ### Requirement: Explicit PDF builds
 
-Revisions SHALL compile only when the user presses the build button or shortcut. It SHALL show an out-of-date warning while the PDF lags the source. A failed build SHALL keep the last good PDF visible and show the error. The log of the build that made the PDF on screen SHALL stay available after later failed builds [8]. A build after one that failed, timed out, or was cancelled SHALL compile again from the start, so that it shows the real error again when nothing changed and succeeds once the source is fixed, with no cache to clear by hand [11]. The `changes` package draws a comment as a margin note, which LaTeX cannot place in some parts of a document. When a build fails with `Float(s) lost` or `Not in outer par mode` and the document contains comments, the failure SHALL explain in plain language that a comment sits where LaTeX cannot place a margin note, giving as examples the abstract of some journal templates, a caption, a footnote, a table, and a boxed area. It SHALL also name each comment found in such a place, with a link that opens it [11].
+Revisions SHALL compile only when the user presses the build button or shortcut. It SHALL show an out-of-date warning while the PDF lags the source. A failed build SHALL keep the last good PDF visible and show the error. The log of the build that made the PDF on screen SHALL stay available after later failed builds [8]. A build after one that failed, timed out, or was cancelled SHALL compile again from the start, so that it shows the real error again when nothing changed and succeeds once the source is fixed, with no cache to clear by hand [11]. The `changes` package draws a comment as a margin note, which LaTeX cannot place in some parts of a document. When a build fails with `Float(s) lost` or `Not in outer par mode` and the document contains comments, the failure SHALL explain in plain language that a comment sits where LaTeX cannot place a margin note, giving as examples the abstract of some journal templates, a caption, a footnote, a table, and a boxed area. It SHALL also name each comment found in such a place, with a link that opens it [11]. When the main document's preamble lacks the block that draws such comments inline, the failure SHALL offer one action that adds the block to the preamble as an ordinary edit, shown in Changes & history like any other, and builds again [12].
 
 #### Scenario: Edit after build
 
@@ -340,6 +350,11 @@ Revisions SHALL compile only when the user presses the build button or shortcut.
 
 - WHEN a build fails with `Float(s) lost` because a comment sits in a figure
 - THEN the failure explains that LaTeX cannot place a comment's margin note there and names that comment, and clicking it opens the comment's line
+
+#### Scenario: Draw comments inline from a failed build
+
+- WHEN a build fails with `Float(s) lost` because a comment sits in a figure of a manuscript that loads `changes` without the inline-notes block, and the user takes the offered action
+- THEN Revisions adds the block after `\usepackage{changes}` in the main document, the build succeeds, and the added lines show as an uncommitted change
 
 ### Requirement: Local build isolation
 
@@ -552,3 +567,4 @@ Redraft's OpenIrisDPI trust profile, protected objects, and separate Source View
 - [9] `notes/feedback-demo-02.md`. Feedback on the second demo build and the publication decisions, 2026-11-11.
 - [10] The owner's request of 2026-11-11, "add a quit button and fix the stats macros", made after the installed app could only be stopped on macOS by logging out, and after a real manuscript's stats macros showed as errors and raw source in the inline view.
 - [11] The owner's report against v0.1.0, 2026-11-11: a comment in the abstract of a journal template stopped the build with `Float(s) lost`, and pressing Build PDF again later reported a failure with no error, file, or line, because `latexmk` skips a step that failed before until a source changes.
+- [12] `notes/feedback-release-01.md`. Feedback on the first release and the owner's choice of the hybrid for comments where a margin note cannot go, 2026-11-12.

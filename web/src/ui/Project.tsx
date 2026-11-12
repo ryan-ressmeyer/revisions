@@ -48,6 +48,7 @@ import {
 	addHighlight,
 	applyEdits,
 	type Edit,
+	ensureInlineNotes,
 	ensurePreamble,
 } from "../core/changes/changes";
 import { marginNoteTrouble } from "../core/changes/notes";
@@ -548,6 +549,35 @@ export function ProjectView({
 			else setNotice(explain(error));
 		}
 	}, [id]);
+
+	// The repair for a build that failed on comments where a margin note
+	// cannot go: add the block that draws them inline to the entry file, as
+	// an ordinary edit, and build again.
+	const drawInline = async () => {
+		if (!entry) return;
+		if (snapshotHead) {
+			setNotice(LOCKED);
+			return;
+		}
+		const v = view.current;
+		if (v && entry === fileRef.current?.path) {
+			const edits = ensureInlineNotes(v.state.doc.toString());
+			if (edits.length > 0) v.dispatch({ changes: edits });
+		} else {
+			try {
+				const loaded = await loadFile(id, entry);
+				const edits = ensureInlineNotes(loaded.text);
+				if (edits.length > 0)
+					await putFile(id, entry, loaded.hash, applyEdits(loaded.text, edits));
+			} catch (error) {
+				setNotice(
+					`Revisions could not change ${entry}, so nothing was changed. ${explain(error)}`,
+				);
+				return;
+			}
+		}
+		await runBuild();
+	};
 
 	// Mod-Enter and Mod-S build. Captured before CodeMirror sees them.
 	const buildRef = useRef(runBuild);
@@ -1076,7 +1106,9 @@ export function ProjectView({
 									<BuildProblems
 										build={build}
 										files={sourceFiles}
+										entry={entry}
 										onOpen={openChosen}
+										onInline={drawInline}
 									/>
 								)}
 								{texMissing ? (
@@ -1362,16 +1394,28 @@ const problemTitle: Partial<Record<BuildStatus["state"], string>> = {
 function BuildProblems({
 	build,
 	files,
+	entry,
 	onOpen,
+	onInline,
 }: {
 	build: BuildStatus;
 	files: () => readonly SourceFile[];
+	/** The main document's path. */
+	entry: string;
 	onOpen: (path: string, jump: Jump) => void;
+	/** Adds the block that draws comments inline, and builds. */
+	onInline: () => void;
 }) {
 	const title = problemTitle[build.state];
 	if (!title) return null;
 	// Scans the sources only when the errors are about margin notes.
-	const notes = marginNoteTrouble(build.errors, files());
+	const sources = files();
+	const notes = marginNoteTrouble(build.errors, sources);
+	const entryText = sources.find((f) => f.path === entry)?.text;
+	const canInline =
+		notes !== undefined &&
+		entryText !== undefined &&
+		ensureInlineNotes(entryText).length > 0;
 	return (
 		<div className="build-problems" role="alert">
 			<h2>{title}</h2>
@@ -1382,6 +1426,16 @@ function BuildProblems({
 				{build.errors.length > 0 && " Click a problem to go to that line."}
 			</p>
 			{notes && <p>{notes.explanation}</p>}
+			{canInline && (
+				<p>
+					Revisions can instead add a few lines to the preamble of {entry} so
+					that comments in such places appear inside the text rather than in the
+					margin.{" "}
+					<button type="button" onClick={onInline}>
+						Show these comments inside the text and build
+					</button>
+				</p>
+			)}
 			{notes && notes.comments.length > 0 && (
 				<ul aria-label="Comments that cannot have a margin note">
 					{notes.comments.map((c) => (
