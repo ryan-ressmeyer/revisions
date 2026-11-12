@@ -244,8 +244,12 @@ func replace(from, exe string) error {
 
 // Cleanup removes the program that an update on Windows moved aside. The old
 // process may still be exiting, and Windows keeps its file until it has, so
-// Cleanup tries for a few seconds. It does nothing when there is no such file.
+// Cleanup tries for a few seconds. Elsewhere nothing is moved aside, and a
+// file of that name is someone else's.
 func Cleanup(exe string) {
+	if runtime.GOOS != "windows" {
+		return
+	}
 	old := exe + ".old"
 	for range 20 {
 		if err := os.Remove(old); err == nil || errors.Is(err, os.ErrNotExist) {

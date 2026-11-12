@@ -20,7 +20,7 @@ Each page takes a reader with nothing installed to an open manuscript, including
 - [Windows](docs/install-windows.md)
 - [Linux](docs/install-linux.md)
 
-The installers are `scripts/install.sh` (macOS and Linux) and `scripts/install.ps1` (Windows). Each downloads the latest release for the computer, checks it against the release's `SHA256SUMS`, installs it for the current user without administrator rights, and adds Revisions to Spotlight, the Start menu, or the applications menu. Running one again upgrades in place. After that, Revisions updates itself: when a newer release is out it shows **Version X is available**, and its **Update** button downloads the release's program, checks it against `SHA256SUMS`, replaces the running program, and restarts it in the same browser tab. The check asks GitHub's public releases API for the latest release and sends no token and nothing about the user.
+The installers are `scripts/install.sh` (macOS and Linux) and `scripts/install.ps1` (Windows). Each downloads the latest release for the computer, checks it against the release's `SHA256SUMS`, installs it for the current user without administrator rights, and adds Revisions to Spotlight, the Start menu, or the applications menu. Running one again upgrades in place. After that, Revisions can update itself: when a newer release is out it shows **Version X is available**, and its **Update** button downloads the release's program, checks it against `SHA256SUMS`, replaces the running program, and restarts it in the same browser tab. The check asks GitHub's public releases API for the latest release and sends no token and nothing about the user.
 
 ## Status
 
