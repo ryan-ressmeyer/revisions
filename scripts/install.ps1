@@ -38,7 +38,10 @@
 		Download "$url/$asset" $new
 		Download "$url/SHA256SUMS" "$new.sums"
 		$line = Get-Content "$new.sums" | Where-Object { $_ -like "* $asset" } | Select-Object -First 1
-		$got = (Get-FileHash $new -Algorithm SHA256).Hash
+		# .NET rather than Get-FileHash, which is missing when Windows PowerShell
+		# is started from PowerShell 7.
+		$sha = [Security.Cryptography.SHA256]::Create()
+		$got = [BitConverter]::ToString($sha.ComputeHash([IO.File]::ReadAllBytes($new))) -replace '-', ''
 		if (-not $line -or ($line -split ' ')[0] -ne $got) {
 			throw 'Revisions was not installed: the download does not match its checksum. Nothing was changed. Try again later.'
 		}
