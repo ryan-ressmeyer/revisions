@@ -24,7 +24,7 @@ The old repository is read-only evidence of earlier choices. It is not a feature
 
 **Sending changes back.** A GitKraken-style commit graph shows local and remote history. Within the permissions of their own GitHub account, the collaborator can review diffs, commit, pull, push, create or switch branches, open a pull request, force-push, and discard changes [1, Q11–Q12, Q28]. Force-push and discard each show what they will destroy and require one confirmation [1, Q29]. Any commit in the history can be viewed as a read-only snapshot, from which the collaborator goes back to their branch or starts a new one [9].
 
-**Installing.** The collaborator follows copy-paste commands or web instructions for macOS, Linux, or Windows. If `latexmk` is missing, Revisions guides them to install MacTeX, MiKTeX, or TeX Live [1, Q21, Q34].
+**Installing.** The collaborator follows a written page for macOS, Linux, or Windows that installs Git and a TeX distribution and then pastes one command. The command downloads Revisions from the latest GitHub Release of the public repository, which is MIT licensed, and puts it where the platform's app launcher finds it [9]. If `latexmk` is missing, Revisions guides them to install MacTeX, MiKTeX, or TeX Live [1, Q21, Q34].
 
 ## Reference-level explanation
 
@@ -353,10 +353,22 @@ Revisions SHALL detect the system Git. When it is missing, Revisions SHALL guide
 
 Revisions SHALL provide copy-paste commands or web-based instructions for installing it and its prerequisites on macOS, Linux, and Windows, assuming nothing is preinstalled. Where a step can be done without a terminal, the instructions SHALL offer that path.
 
+Releases SHALL be published as GitHub Releases of `ryan-ressmeyer/revisions` [9]. Each platform SHALL have a one-line install command that downloads the latest release for the computer, checks it against the release's SHA-256 checksums, and installs it for the current user without administrator rights, so that it opens from Spotlight, the Start menu, or the desktop's applications menu. Running the command again SHALL upgrade in place. The command SHALL then say in plain language whether Git and TeX were found and what to do if not. Git and TeX SHALL be detected and guided, not bundled [9].
+
 #### Scenario: Fresh Mac
 
 - WHEN a collaborator with a fresh Mac follows the macOS instructions
 - THEN they reach a working Revisions session without the author's involvement
+
+#### Scenario: Install and upgrade
+
+- WHEN a collaborator runs the install command, opens Revisions from the platform's launcher, and later runs the command again after a new release
+- THEN the first run installs Revisions for their user, and the second stops the running copy and replaces it with the new version
+
+#### Scenario: Tampered download
+
+- WHEN the downloaded program does not match the release's checksum
+- THEN the install command leaves any installed Revisions unchanged and says why
 
 ### Requirement: Path containment
 
@@ -496,8 +508,7 @@ Redraft's OpenIrisDPI trust profile, protected objects, and separate Source View
 
 ## Unresolved questions
 
-- [NEEDS CLARIFICATION: The GitHub OAuth App client ID. The author must register the app.]
-- [NEEDS CLARIFICATION: Where release binaries are hosted and which licence applies. This determines the install commands.]
+- [NEEDS CLARIFICATION: The GitHub OAuth App client ID. The author must register the app and put its ID in the source; see `specs/architecture.md`, Host seam.]
 - [NEEDS CLARIFICATION: How a kamaji-hosted share page would reach collaborators outside the tailnet. Deferred.]
 
 ## Sources

@@ -221,7 +221,20 @@ Compilation is a trusted-local operation. Disabling shell escape and `latexmkrc`
 - The open file loads first. Every other `.tex` and `.bib` text file then loads in parallel, so labels and citation keys resolve across files without a build; their status re-renders when the files arrive.
 - KaTeX runs once per distinct formula and figures are rasterised once per path; a widget scrolled back into view reuses that output. Widgets compare equal when their data is equal, so a re-plan with nothing changed keeps every widget's DOM. CodeMirror draws only about 1000 px beyond the visible area and offers no supported setting to draw more, so the cost of drawing a new line is what keeps scrolling smooth.
 
-### Engineering rules
+### Releases and installation
+
+Pushing a tag that starts with `v` runs `.github/workflows/release.yml` [3]. It builds the web UI once, then cross-compiles with `CGO_ENABLED=0` for `darwin/arm64`, `darwin/amd64`, `linux/amd64`, `linux/arm64`, and `windows/amd64`, setting `main.version` to the tag. Every dependency builds without cgo: go-keyring uses `/usr/bin/security` on macOS, D-Bus in pure Go on Linux, and system calls on Windows. The Go linker ad-hoc signs the `darwin/arm64` binary, which Apple silicon requires. The workflow publishes a GitHub Release with `gh`, holding `revisions-<os>-<arch>` (with `.exe` on Windows), `install.sh`, `install.ps1`, and `SHA256SUMS` in `sha256sum` format. It uses only GitHub's own actions.
+
+The install scripts download from `https://github.com/ryan-ressmeyer/revisions/releases/latest/download`, which GitHub redirects to the newest release that is neither a draft nor a prerelease. `REVISIONS_DOWNLOAD_URL` replaces that address, which is how `cmd/revisions/install_test.go` runs them against a local file server. Each script checks the program against `SHA256SUMS` before replacing anything, stops a running copy started from the launcher, moves the new program into place, and reports whether Git and `latexmk` were found.
+
+| Platform | Script | Program | Launcher |
+|---|---|---|---|
+| macOS | `install.sh` | `~/Applications/Revisions.app/Contents/MacOS/revisions` | the `Revisions.app` bundle, with `LSUIElement` so it has no Dock icon |
+| Linux | `install.sh` | `~/.local/bin/revisions` | `$XDG_DATA_HOME/applications/revisions.desktop` |
+| Windows | `install.ps1` | `%LOCALAPPDATA%\Programs\Revisions\revisions.exe` | `Revisions.lnk` in the user's Start menu, opening a minimized console window that quits Revisions when closed |
+
+The programs are not signed by a developer. `curl` does not set the `com.apple.quarantine` attribute, so Gatekeeper does not assess the app [4], and `Invoke-WebRequest` does not add the Mark of the Web, so SmartScreen does not stop the program [5]. The installer test checks both on CI's macOS and Windows runners. A program downloaded through a browser does carry those marks, which is why the instructions use the scripts.
+
 
 - Behaviour is written test-first. Each Scenario in `specs/overview.md` maps to at least one automated test, recorded in `docs/scenario-tests.md`.
 - Go tests use real Git repositories in temporary directories and the real `latexmk` when it is installed. Tests that need TeX skip when it is absent.
@@ -243,10 +256,12 @@ Compilation is a trusted-local operation. Disabling shell escape and `latexmkrc`
 
 ## Unresolved questions
 
-- [NEEDS CLARIFICATION: The OAuth App client ID. The author must register the app.]
-- [NEEDS CLARIFICATION: Where release binaries are hosted, which determines the install commands.]
+- [NEEDS CLARIFICATION: The OAuth App client ID. The author must register the app and set `ClientID` in `internal/host/github/github.go`.]
 
 ## Sources
 
 - [1] `notes/grill-rewrite-overview-01.md`. Interview, session 01, 2026-11-09. Q1 gives the motivation for the rewrite.
 - [2] `notes/decisions-v1-kickoff.md`. Stack choice, delegated decisions, and the build spike, 2026-11-10.
+- [3] `notes/feedback-demo-02.md`. Publication decisions: GitHub Releases on the public repository under the MIT licence, 2026-11-11.
+- [4] Apple Developer Forums, threads 706442 and 127175: tools such as `curl` do not quarantine what they download, so Gatekeeper is not invoked. https://developer.apple.com/forums/thread/706442
+- [5] Microsoft, about_Execution_Policies (PowerShell 5.1): `Invoke-WebRequest` and `Invoke-RestMethod` may not add the Mark of the Web. https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_execution_policies?view=powershell-5.1
