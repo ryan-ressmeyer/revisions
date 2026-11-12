@@ -15,10 +15,17 @@ test("File tree: folders first, the main document marked, text opens, images pre
 }) => {
 	await openPaper(page);
 	const top = tree(page).locator('[role="treeitem"][aria-level="1"]');
-	await expect(top).toHaveCount(5);
+	await expect(top).toHaveCount(6);
 	expect(
 		await top.evaluateAll((els) => els.map((e) => e.dataset.path)),
-	).toEqual(["figures", "sections", "main.tex", "refs.bib", "supplement.tex"]);
+	).toEqual([
+		"figures",
+		"sections",
+		"main.tex",
+		"refs.bib",
+		"stats.tex",
+		"supplement.tex",
+	]);
 	await expect(item(page, "main.tex")).toHaveAttribute("aria-selected", "true");
 	await expect(item(page, "main.tex")).toContainText("main document");
 
