@@ -21,6 +21,12 @@ import {
 	type RepoId,
 } from "../api/client";
 import {
+	gitCheckout,
+	gitCreateBranch,
+	gitStatus,
+	type Snapshot,
+} from "../api/git";
+import {
 	type BuildStatus,
 	cancelBuild,
 	getBuild,
@@ -78,6 +84,9 @@ interface Jump {
 }
 
 const mod = (platform: Platform) => (platform === "darwin" ? "⌘" : "Ctrl+");
+
+const LOCKED =
+	"This is an earlier version, so it cannot be changed. Go back to your branch, or start a branch from this version, to edit.";
 
 /** The editor and the PDF of one repository, side by side. */
 export function ProjectView({
@@ -163,6 +172,22 @@ export function ProjectView({
 		paths: repoPaths,
 		version: sourcesVersion,
 	} = useProjectSources(id, project, repoState, file !== null);
+
+	// A detached HEAD: an earlier version on screen, read-only.
+	const snapshotHead = repoState?.git.branch === null ? repoState.git.head : "";
+	const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+	useEffect(() => {
+		setSnapshot(null);
+		if (!snapshotHead) return;
+		let live = true;
+		gitStatus(id).then(
+			(s) => live && setSnapshot(s.snapshot),
+			() => {},
+		);
+		return () => {
+			live = false;
+		};
+	}, [id, snapshotHead]);
 
 	const isTex = file?.path.endsWith(".tex") ?? false;
 	const rich = mode === "rich" && isTex;
@@ -274,6 +299,7 @@ export function ProjectView({
 			: [];
 
 	const toggleTracking = async () => {
+		if (snapshotHead) return;
 		if (tracking) {
 			setTracking(null);
 			return;
@@ -293,6 +319,10 @@ export function ProjectView({
 	const openComment = () => {
 		const v = view.current;
 		if (!fileRef.current?.path.endsWith(".tex")) return;
+		if (snapshotHead) {
+			setNotice(LOCKED);
+			return;
+		}
 		if (!v || v.state.selection.main.empty) {
 			setNotice("Select the text you want to comment on first.");
 			return;
@@ -671,6 +701,11 @@ export function ProjectView({
 		polledBuild?.pdfVersion ?? 0,
 	);
 	const keys = mod(env.platform);
+	const refusal = !isTex
+		? "Comments and highlights go in LaTeX files"
+		: snapshotHead
+			? LOCKED
+			: "";
 	const showingPdf = !texMissing && pdfVersion > 0;
 
 	return (
@@ -780,6 +815,14 @@ export function ProjectView({
 			<div className="notice" role="status" aria-live="polite">
 				{notice}
 			</div>
+			{snapshotHead && (
+				<SnapshotBanner
+					id={id}
+					head={snapshotHead}
+					snapshot={snapshot}
+					onDone={afterGit}
+				/>
+			)}
 			<div className="workspace">
 				{treeOpen === "open" && project && (
 					<div id="file-tree" className="sidebar">
@@ -832,7 +875,12 @@ export function ProjectView({
 									className={`toggle ${tracking ? "on" : ""}`}
 									aria-pressed={tracking !== null}
 									onClick={toggleTracking}
-									title="Record your edits as suggestions others can accept or reject"
+									disabled={!!snapshotHead}
+									title={
+										snapshotHead
+											? LOCKED
+											: "Record your edits as suggestions others can accept or reject"
+									}
 								>
 									<span className="switch" aria-hidden="true" />
 									Track changes
@@ -840,7 +888,7 @@ export function ProjectView({
 								<SelectionButton
 									store={store}
 									onClick={openComment}
-									usable={isTex}
+									refusal={refusal}
 									title={`Comment on the selected text (${keys}Alt+M)`}
 									shortcut="Control+Alt+M Meta+Alt+M"
 								>
@@ -849,7 +897,7 @@ export function ProjectView({
 								<SelectionButton
 									store={store}
 									onClick={highlight}
-									usable={isTex}
+									refusal={refusal}
 									title="Highlight the selected text, without a comment"
 								>
 									Highlight
@@ -905,6 +953,7 @@ export function ProjectView({
 										extensions={extensions}
 										onReady={onEditorReady}
 										onShowInPdf={showInPdf}
+										locked={!!snapshotHead}
 									/>
 								) : (
 									<div className="editor" />
@@ -1037,6 +1086,122 @@ export function ProjectView({
 				/>
 			</div>
 		</div>
+	);
+}
+
+/** Says which earlier version is on screen, and leads back to a branch. */
+function SnapshotBanner({
+	id,
+	head,
+	snapshot,
+	onDone,
+}: {
+	id: RepoId;
+	head: string;
+	/** null until the status arrives. */
+	snapshot: Snapshot | null;
+	/** Called after the checkout moved. */
+	onDone: () => void;
+}) {
+	const [naming, setNaming] = useState(false);
+	const [name, setName] = useState("");
+	const [busy, setBusy] = useState(false);
+	const [problem, setProblem] = useState("");
+	const input = useRef<HTMLInputElement>(null);
+	useEffect(() => {
+		if (naming) input.current?.focus();
+	}, [naming]);
+	const run = async (action: () => Promise<unknown>) => {
+		setBusy(true);
+		setProblem("");
+		try {
+			await action();
+			onDone();
+		} catch (error) {
+			setProblem(explain(error));
+		} finally {
+			setBusy(false);
+		}
+	};
+	const back = snapshot?.returnTo;
+	return (
+		<section
+			className="banner warn snapshot-banner"
+			aria-label="Earlier version"
+		>
+			<p>
+				<b>You are looking at an earlier version</b>
+				{snapshot ? (
+					<>
+						: “{snapshot.subject}”, from{" "}
+						<time dateTime={snapshot.date}>
+							{new Date(snapshot.date).toLocaleString(undefined, {
+								dateStyle: "long",
+								timeStyle: "short",
+							})}
+						</time>
+						.
+					</>
+				) : (
+					` (${head.slice(0, 7)}).`
+				)}{" "}
+				It cannot be changed here. To edit from this version, start a branch
+				from it.
+			</p>
+			{naming ? (
+				<form
+					className="row"
+					onSubmit={(e) => {
+						e.preventDefault();
+						run(() => gitCreateBranch(id, name.trim()));
+					}}
+				>
+					<label className="inline-field">
+						Branch name
+						<input
+							ref={input}
+							value={name}
+							onChange={(e) => setName(e.target.value)}
+							required
+							spellCheck={false}
+							placeholder="for example, gale-edits"
+						/>
+					</label>
+					<button type="submit" className="primary" disabled={busy}>
+						Create branch
+					</button>
+					<button type="button" onClick={() => setNaming(false)}>
+						Cancel
+					</button>
+				</form>
+			) : (
+				<div className="row">
+					{back && (
+						<button
+							type="button"
+							className="primary"
+							disabled={busy}
+							onClick={() => run(() => gitCheckout(id, back))}
+						>
+							Back to {back}
+						</button>
+					)}
+					<button
+						type="button"
+						disabled={busy}
+						onClick={() => setNaming(true)}
+						title="A new branch starts at this version, and you can edit it"
+					>
+						Start a branch from this version
+					</button>
+				</div>
+			)}
+			{problem && (
+				<p role="alert" className="alert">
+					{problem}
+				</p>
+			)}
+		</section>
 	);
 }
 
@@ -1501,34 +1666,28 @@ function useProjectSources(
 function SelectionButton({
 	store,
 	onClick,
-	usable,
+	refusal,
 	title,
 	shortcut,
 	children,
 }: {
 	store: EditorStore;
 	onClick: () => void;
-	/** False for files that are not LaTeX, such as .bib files. */
-	usable: boolean;
+	/** Why the button cannot be used here, such as in a .bib file; "" when it can. */
+	refusal: string;
 	title: string;
 	shortcut?: string;
 	children: ReactNode;
 }) {
 	const state = useEditorState(store);
-	const empty = !usable || (state?.selection.main.empty ?? true);
+	const empty = !!refusal || (state?.selection.main.empty ?? true);
 	return (
 		<button
 			type="button"
 			className="quiet"
 			onClick={onClick}
 			disabled={empty}
-			title={
-				!usable
-					? "Comments and highlights go in LaTeX files"
-					: empty
-						? "Select text first"
-						: title
-			}
+			title={refusal ? refusal : empty ? "Select text first" : title}
 			aria-keyshortcuts={shortcut}
 		>
 			{children}

@@ -2266,3 +2266,17 @@ dialog.wide {
 	background: #fff;
 	border-radius: 4px;
 }
+
+/* The earlier version on screen */
+
+.banner.snapshot-banner p {
+	margin: 0 0 0.5rem;
+}
+
+.snapshot-banner .inline-field {
+	color: var(--text);
+}
+
+.commit-view {
+	margin-bottom: 0.75rem;
+}

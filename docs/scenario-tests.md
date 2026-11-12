@@ -182,6 +182,16 @@ Every Scenario in `specs/overview.md`, grouped by Requirement, with the automate
 | Open a pull request | `internal/server/routes_git_test.go: TestOpenAPullRequest`; `web/e2e/git.spec.ts: "Open a pull request: a branch is sent and its pull request shows in the graph"` |
 | Branch removed on GitHub | `internal/server/routes_git_test.go: TestBranchRemovedOnGitHub`; `web/e2e/git.spec.ts: "Branch removed on GitHub: Get latest explains it and Send puts it back"` |
 
+## View an earlier version
+
+| Scenario | Test |
+|---|---|
+| View an earlier version | `internal/server/routes_git_test.go: TestViewAnEarlierVersion`; `web/e2e/git.spec.ts: "View this version: an earlier version is read-only, builds, and the banner goes back to the branch"` |
+| Back to the branch | `internal/server/routes_git_test.go: TestViewAnEarlierVersion`; `web/e2e/git.spec.ts: "View this version: an earlier version is read-only, builds, and the banner goes back to the branch"` |
+| Branch from an earlier version | `internal/server/routes_git_test.go: TestViewAnEarlierVersion`; `web/e2e/git.spec.ts: "Snapshot: a commit link opens a read-only snapshot, and a branch from it can be edited and committed"` |
+| Uncommitted work blocks viewing | `internal/server/routes_git_test.go: TestViewAnEarlierVersion`; `web/e2e/git.spec.ts: "View this version: refused while there are uncommitted changes"` |
+| PDF from another version | `internal/server/routes_build_test.go: TestPDFFromAnotherVersionIsOutOfDate`; `web/e2e/git.spec.ts: "View this version: an earlier version is read-only, builds, and the banner goes back to the branch"` |
+
 ## Destructive-operation confirmation
 
 | Scenario | Test |

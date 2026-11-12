@@ -513,7 +513,82 @@ test("Branch: switching is refused while there are uncommitted changes", async (
 	expect(await editorText(page)).toContain("\\title{Draft Title}");
 });
 
-test("Snapshot: a commit link opens a detached copy that needs a branch before committing", async ({
+const banner = (page: Page) =>
+	page.getByRole("region", { name: "Earlier version" });
+
+/** Types at the start of the open file and checks that nothing changed. */
+async function typingIsRefused(page: Page, server: Server) {
+	const disk = onDisk(server);
+	await editor(page).click();
+	await page.keyboard.press("Control+Home");
+	await page.keyboard.type("% not allowed\n");
+	expect(await editorText(page)).not.toContain("% not allowed");
+	await expect(saveStatus(page)).toHaveText("Saved");
+	expect(onDisk(server)).toBe(disk);
+}
+
+test("View this version: an earlier version is read-only, builds, and the banner goes back to the branch", async ({
+	page,
+	server,
+}) => {
+	test.setTimeout(120_000);
+	await open(page);
+	const p = await openPanel(page);
+	await retitle(page, "A Later Title");
+	await commit(page, "Later title");
+	await expect(banner(page)).toHaveCount(0);
+
+	// Selecting an earlier commit offers to view it; the latest one does not.
+	await expect(
+		p.getByRole("button", { name: "View this version" }),
+	).toHaveCount(0);
+	await history(page)
+		.getByRole("button", { name: /Initial manuscript/ })
+		.click();
+	await p.getByRole("button", { name: "View this version" }).click();
+	await expect(banner(page)).toContainText("Initial manuscript");
+	await expect(banner(page)).toContainText("cannot be changed");
+	await expect.poll(() => editorText(page)).toContain(TITLE);
+	expect(git(server.paper, "branch", "--show-current")).toBe("");
+	await typingIsRefused(page, server);
+
+	// The snapshot builds.
+	await page.getByRole("button", { name: "Build PDF" }).click();
+	await expect(page.locator('[data-page="1"] canvas')).toHaveCount(1, {
+		timeout: 60_000,
+	});
+	await expect(page.getByText("The PDF is out of date")).toHaveCount(0);
+
+	// Back on the branch, that PDF is out of date and the editor takes edits.
+	await banner(page).getByRole("button", { name: "Back to main" }).click();
+	await expect(banner(page)).toHaveCount(0);
+	await expect(topbar(page).getByText("on branch main")).toBeVisible();
+	await expect.poll(() => editorText(page)).toContain("A Later Title");
+	await expect(page.getByText("The PDF is out of date")).toBeVisible();
+	await typeAtStart(page, "% editable again\n");
+	expect(onDisk(server)).toContain("% editable again");
+});
+
+test("View this version: refused while there are uncommitted changes", async ({
+	page,
+	server,
+}) => {
+	await open(page);
+	const p = await openPanel(page);
+	await retitle(page, "A Later Title");
+	await commit(page, "Later title");
+	await typeAtStart(page, "% unfinished\n");
+	await history(page)
+		.getByRole("button", { name: /Initial manuscript/ })
+		.click();
+	await p.getByRole("button", { name: "View this version" }).click();
+	await expect(p.getByRole("alert")).toContainText(/commit or discard/i);
+	await expect(p.getByRole("alert")).toContainText("main.tex");
+	expect(git(server.paper, "branch", "--show-current")).toBe("main");
+	await expect(banner(page)).toHaveCount(0);
+});
+
+test("Snapshot: a commit link opens a read-only snapshot, and a branch from it can be edited and committed", async ({
 	page,
 	github,
 	server,
@@ -527,17 +602,23 @@ test("Snapshot: a commit link opens a detached copy that needs a branch before c
 	await expect(
 		topbar(page).getByText(`at version ${first.slice(0, 7)}`),
 	).toBeVisible();
-	await typeAtStart(page, "% on a snapshot\n");
-	const p = await openPanel(page);
-	await p.getByRole("button", { name: /Uncommitted changes/ }).click();
-	await expect(p).toContainText("snapshot");
+	await expect(banner(page)).toContainText("Initial manuscript");
 	await expect(
-		p.getByRole("button", { name: "Commit", exact: true }),
-	).toBeDisabled();
+		banner(page).getByRole("button", { name: "Back to main" }),
+	).toBeVisible();
+	await typingIsRefused(page, server);
 
-	await p.getByLabel("Branch name").fill("from-snapshot");
-	await p.getByRole("button", { name: "Create branch" }).click();
+	await banner(page)
+		.getByRole("button", { name: "Start a branch from this version" })
+		.click();
+	await banner(page).getByLabel("Branch name").fill("from-snapshot");
+	await banner(page).getByRole("button", { name: "Create branch" }).click();
 	await expect(topbar(page).getByText("on branch from-snapshot")).toBeVisible();
+	await expect(banner(page)).toHaveCount(0);
+	expect(git(server.paper, "rev-parse", "HEAD")).toBe(first);
+
+	await typeAtStart(page, "% on a branch from the snapshot\n");
+	await openPanel(page);
 	await commit(page, "Note on the snapshot");
 	expect(git(server.paper, "log", "-1", "--format=%s", "from-snapshot")).toBe(
 		"Note on the snapshot",

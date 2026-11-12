@@ -27,6 +27,16 @@ export interface GitStatus {
 	merging: boolean;
 	conflicts: string[];
 	permissions: { push: boolean };
+	/** The version on screen while HEAD is detached; null on a branch. */
+	snapshot: Snapshot | null;
+}
+
+export interface Snapshot {
+	subject: string;
+	/** Author date, ISO 8601. */
+	date: string;
+	/** The branch that going back switches to; null when there is none. */
+	returnTo: string | null;
 }
 
 export interface Commit {
@@ -127,6 +137,12 @@ export function gitCreateBranch(id: RepoId, name: string): Promise<GitStatus> {
 /** Errors: 404 `not_found`, 409 `dirty` with `files`. */
 export function gitCheckout(id: RepoId, branch: string): Promise<GitStatus> {
 	return json("POST", `${R(id)}/git/checkout`, { branch });
+}
+
+/** Checks out a commit as a read-only snapshot (detached HEAD). Errors as
+ * for {@link gitCheckout}. */
+export function gitViewVersion(id: RepoId, commit: string): Promise<GitStatus> {
+	return json("POST", `${R(id)}/git/checkout`, { commit });
 }
 
 export interface DiscardPreview {

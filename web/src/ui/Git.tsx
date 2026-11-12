@@ -36,6 +36,7 @@ import {
 	gitPull,
 	gitPush,
 	gitStatus,
+	gitViewVersion,
 	type PullRequest,
 } from "../api/git";
 import type { RepoState } from "../api/repo";
@@ -219,6 +220,13 @@ export function GitPanel({
 			"branch",
 			() => gitCreateBranch(id, name),
 			(s) => `You are now on the new branch ${s.branch}.`,
+		);
+	const viewVersion = (sha: string) =>
+		act(
+			"view",
+			() => gitViewVersion(id, sha),
+			() =>
+				"The editor now shows this version, read-only. The banner above the editor leads back.",
 		);
 	const abortMerge = () =>
 		act(
@@ -407,7 +415,14 @@ export function GitPanel({
 							onDiscard={() => openDialog("discard")}
 						/>
 					) : shown ? (
-						<CommitView id={id} sha={shown} />
+						<CommitView
+							id={id}
+							sha={shown}
+							busy={!!busy}
+							onView={
+								shown === status?.head ? undefined : () => viewVersion(shown)
+							}
+						/>
 					) : null}
 				</div>
 			</div>
@@ -836,9 +851,9 @@ function ChangesView({
 			{detached && (
 				<form className="snapshot" onSubmit={create}>
 					<p>
-						You opened a link to one version, so this copy is a <b>snapshot</b>,
-						not a branch. To keep your changes, first create a branch: a named
-						line of work that starts here and takes your changes along.
+						This copy shows one version as a <b>snapshot</b>, not a branch. To
+						keep these changes, first create a branch: a named line of work that
+						starts here and takes your changes along.
 					</p>
 					<div className="row">
 						<label className="inline-field">
@@ -929,7 +944,18 @@ function ChangesView({
 	);
 }
 
-function CommitView({ id, sha }: { id: RepoId; sha: string }) {
+function CommitView({
+	id,
+	sha,
+	busy,
+	onView,
+}: {
+	id: RepoId;
+	sha: string;
+	busy: boolean;
+	/** Absent for the version already on screen. */
+	onView?: () => void;
+}) {
 	const [detail, setDetail] = useState<CommitDetail | null>(null);
 	const [error, setError] = useState("");
 	useEffect(() => {
@@ -966,6 +992,18 @@ function CommitView({ id, sha }: { id: RepoId; sha: string }) {
 				{detail.authorName} · <When iso={detail.date} /> ·{" "}
 				<code title={detail.sha}>{detail.sha.slice(0, 7)}</code>
 			</p>
+			{onView && (
+				<div className="row commit-view">
+					<button
+						type="button"
+						onClick={onView}
+						disabled={busy}
+						title="Show the manuscript as it was at this commit, read-only (git switch --detach)"
+					>
+						View this version
+					</button>
+				</div>
+			)}
 			<DiffView diff={detail.diff} />
 		</div>
 	);

@@ -34,13 +34,24 @@ export interface EditorProps {
 	onReady?: (view: EditorView) => void;
 	/** Mod-J: show the cursor's location in the PDF. */
 	onShowInPdf?: () => void;
+	/**
+	 * Refuse every change but reloads from disk, while the cursor still
+	 * moves and selects: an earlier version shown as a snapshot.
+	 */
+	locked?: boolean;
 }
 
 const none: readonly Extension[] = [];
 
-const readOnly = (on: boolean) => [
-	EditorState.readOnly.of(on),
+const readOnly = (on: boolean, locked: boolean) => [
+	EditorState.readOnly.of(on || locked),
 	EditorView.editable.of(!on),
+	// Comments, accept and reject dispatch changes that readOnly lets through.
+	locked
+		? EditorState.transactionFilter.of((tr) =>
+				tr.docChanged && !tr.annotation(Transaction.remote) ? [] : tr,
+			)
+		: [],
 ];
 
 /** Replaces the document with `text`, changing only the range that differs so
@@ -64,7 +75,10 @@ function replaceDoc(view: EditorView, text: string) {
 			to: old.length - end,
 			insert: text.slice(from, text.length - end),
 		},
-		annotations: Transaction.addToHistory.of(false),
+		annotations: [
+			Transaction.addToHistory.of(false),
+			Transaction.remote.of(true),
+		],
 	});
 }
 
@@ -86,6 +100,7 @@ export function Editor({
 	extensions = none,
 	onReady,
 	onShowInPdf,
+	locked = false,
 }: EditorProps) {
 	const host = useRef<HTMLDivElement>(null);
 	const view = useRef<EditorView | null>(null);
@@ -134,7 +149,7 @@ export function Editor({
 						...defaultKeymap,
 					]),
 					EditorView.contentAttributes.of({ "aria-label": "Source" }),
-					ro.of(readOnly(initial.status === "read-only")),
+					ro.of(readOnly(initial.status === "read-only", locked)),
 					extra.of(extensions),
 					EditorView.updateListener.of((update) => {
 						if (update.docChanged) sync.edit(update.state.doc.toString());
@@ -161,9 +176,11 @@ export function Editor({
 
 	useEffect(() => {
 		view.current?.dispatch({
-			effects: compartments.current.readOnly.reconfigure(readOnly(isReadOnly)),
+			effects: compartments.current.readOnly.reconfigure(
+				readOnly(isReadOnly, locked),
+			),
 		});
-	}, [isReadOnly]);
+	}, [isReadOnly, locked]);
 
 	useEffect(() => {
 		view.current?.dispatch({
