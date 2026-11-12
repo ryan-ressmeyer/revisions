@@ -107,9 +107,24 @@ func TestDeviceFlow(t *testing.T) {
 
 func TestStartDeviceWithoutClientID(t *testing.T) {
 	newHost(t)
+	builtIn := ClientID
+	t.Cleanup(func() { ClientID = builtIn })
+
+	// An empty override turns sign-in off even when the build has an ID, so
+	// these tests keep working once the real ID is in the source.
+	ClientID = "built-in"
 	t.Setenv("REVISIONS_GITHUB_CLIENT_ID", "")
 	if _, err := New().StartDevice(t.Context()); !errors.Is(err, host.ErrNotConfigured) {
-		t.Fatalf("got %v, want ErrNotConfigured", err)
+		t.Fatalf("empty override: got %v, want ErrNotConfigured", err)
+	}
+
+	os.Unsetenv("REVISIONS_GITHUB_CLIENT_ID") // t.Setenv restores it
+	if _, err := New().StartDevice(t.Context()); err != nil {
+		t.Fatalf("built-in ID: %v", err)
+	}
+	ClientID = ""
+	if _, err := New().StartDevice(t.Context()); !errors.Is(err, host.ErrNotConfigured) {
+		t.Fatalf("no ID: got %v, want ErrNotConfigured", err)
 	}
 }
 

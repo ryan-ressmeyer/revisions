@@ -55,7 +55,7 @@ The config directory holds `settings.json` and, for each clone, `repos/<host>/<o
 
 ### Process model
 
-The binary binds `127.0.0.1` on port 4747, or the port given by `--port`. If the port is taken by another Revisions instance, which it tests with `GET /api/ping`, it opens the browser at that instance and exits. `--no-browser` suppresses opening the browser.
+The binary binds `127.0.0.1` on port 4747, or the port given by `--port`. If the port is taken by another Revisions instance, which it tests with `GET /api/ping`, it opens the browser at that instance and exits. `--no-browser` suppresses opening the browser. `--version` prints `revisions <version>` and exits. The version is `dev` unless the build sets `main.version`, which the release build does from the tag; `GET /api/ping` reports the same value.
 
 ### Request hardening
 
@@ -176,7 +176,7 @@ Every Git call goes through one function in `internal/gitx` that sets `GIT_TERMI
 
 ### Host seam
 
-`internal/host` defines one interface: parse a URL, run the device flow, describe the user, report repository permissions, read, list, and create pull requests, and give the clone URL and Git authentication header. `internal/host/github` is the only implementation. Its web and API base URLs come from `REVISIONS_GITHUB_URL` and `REVISIONS_GITHUB_API_URL` when set, which is how tests point it at `githubfake` and at local bare repositories. The OAuth client ID comes from a build-time variable or `REVISIONS_GITHUB_CLIENT_ID`. `REVISIONS_GITHUB_TOKEN` bypasses sign-in.
+`internal/host` defines one interface: parse a URL, run the device flow, describe the user, report repository permissions, read, list, and create pull requests, and give the clone URL and Git authentication header. `internal/host/github` is the only implementation. Its web and API base URLs come from `REVISIONS_GITHUB_URL` and `REVISIONS_GITHUB_API_URL` when set, which is how tests point it at `githubfake` and at local bare repositories. The OAuth client ID is the variable `ClientID` in `internal/host/github/github.go`, its one home, which the release build compiles in as it stands. It is public, not a secret. `REVISIONS_GITHUB_CLIENT_ID` overrides it when set, and an empty value turns sign-in off. `REVISIONS_GITHUB_TOKEN` bypasses sign-in.
 
 - The host segment of a repository id is always `github.com`, and shared URLs are always `github.com` URLs, whatever the base URLs are.
 - The device-flow endpoints are served from the web base URL. When that is not an HTTP URL, as in tests where it is a `file://` directory of bare repositories, they are served from the API base URL.

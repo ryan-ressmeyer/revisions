@@ -20,10 +20,13 @@ import (
 	"github.com/ryan-ressmeyer/revisions/internal/host"
 )
 
-// ClientID is the OAuth App client ID, set at release time with
-// -ldflags "-X github.com/ryan-ressmeyer/revisions/internal/host/github.ClientID=...".
-// REVISIONS_GITHUB_CLIENT_ID overrides it.
-var ClientID string
+// ClientID identifies the Revisions OAuth App to GitHub. This line is its one
+// home: the release build compiles it in as it stands. It is public, not a
+// secret, because the device flow needs no client secret. While it is empty,
+// sign-in answers not_configured and the sign-in screen says why.
+// REVISIONS_GITHUB_CLIENT_ID overrides it, and an empty override turns
+// sign-in off.
+var ClientID = ""
 
 // Host talks to one GitHub. Create it with New.
 type Host struct {
@@ -46,8 +49,11 @@ func New() *Host {
 	h := &Host{
 		web:      env("REVISIONS_GITHUB_URL", "https://github.com"),
 		api:      env("REVISIONS_GITHUB_API_URL", "https://api.github.com"),
-		clientID: env("REVISIONS_GITHUB_CLIENT_ID", ClientID),
+		clientID: ClientID,
 		client:   &http.Client{Timeout: 30 * time.Second},
+	}
+	if id, ok := os.LookupEnv("REVISIONS_GITHUB_CLIENT_ID"); ok {
+		h.clientID = id
 	}
 	// GitHub serves the device flow from its web address. When that is not an
 	// HTTP address (tests point it at a directory of bare repositories), the

@@ -79,6 +79,22 @@ test("Dirty clone: refuses to switch, explains why, and offers the copy as it is
 	expect(readFileSync(main, "utf8")).toMatch(/^% local note\n/);
 });
 
+test.describe("without a GitHub client ID", () => {
+	test.use({
+		serverEnv: { REVISIONS_GITHUB_TOKEN: "", REVISIONS_GITHUB_CLIENT_ID: "" },
+	});
+
+	test("Sign-in not configured: says plainly why sign-in cannot start", async ({
+		page,
+	}) => {
+		await page.goto("/");
+		await page.getByRole("button", { name: "Sign in with GitHub" }).click();
+		await expect(page.getByRole("alert")).toContainText(
+			"cannot sign in to GitHub",
+		);
+	});
+});
+
 test.describe("without Git", () => {
 	test.use({
 		serverEnv: { PATH: mkdtempSync(join(tmpdir(), "revisions-nogit-")) },

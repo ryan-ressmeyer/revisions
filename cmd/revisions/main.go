@@ -24,7 +24,13 @@ var version = "dev"
 func main() {
 	port := flag.Int("port", 4747, "loopback port to serve on")
 	noBrowser := flag.Bool("no-browser", false, "do not open the system browser")
+	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println("revisions", version)
+		return
+	}
 
 	if err := run(*port, !*noBrowser); err != nil {
 		fmt.Fprintln(os.Stderr, "revisions:", err)
