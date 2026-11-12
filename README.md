@@ -12,9 +12,19 @@ Revisions lets an author share a LaTeX manuscript held in a GitHub repository wi
 
 `specs/overview.md` states the requirements. `specs/architecture.md` describes the code and the HTTP contract between the server and the browser.
 
+## Installing
+
+Each page takes a reader with nothing installed to an open manuscript, including Git and LaTeX:
+
+- [macOS](docs/install-macos.md)
+- [Windows](docs/install-windows.md)
+- [Linux](docs/install-linux.md)
+
+The installers are `scripts/install.sh` (macOS and Linux) and `scripts/install.ps1` (Windows). Each downloads the latest release for the computer, checks it against the release's `SHA256SUMS`, installs it for the current user without administrator rights, and adds Revisions to Spotlight, the Start menu, or the applications menu. Running one again upgrades in place.
+
 ## Status
 
-Version 1 is in development. No release has been published, and sign-in with a GitHub account is not configured in this repository yet. The app has been run on Linux only; macOS and Windows are untested.
+Version 1 is in development. Pushing a `v*` tag builds and publishes a release (`.github/workflows/release.yml`), but none has been published yet, so the install commands do not work until the first one is. Sign-in with a GitHub account is not configured yet, because the OAuth App client ID in `internal/host/github/github.go` is empty. The app has been run on Linux only. The installers are tested on Linux here and, in CI, on macOS and Windows, where CI also opens the installed app; nobody has yet used Revisions on a real Mac or Windows PC.
 
 ## Building from source
 
