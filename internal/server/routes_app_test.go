@@ -151,3 +151,15 @@ func TestQuitRefusesAForeignPage(t *testing.T) {
 		t.Fatal("a refused request stopped the server")
 	}
 }
+
+// A build without a release version, such as dev, never looks for or offers
+// an update.
+func TestADevBuildOffersNoUpdate(t *testing.T) {
+	t.Setenv("REVISIONS_RELEASES_URL", "http://127.0.0.1:1") // nothing listens there
+	s := newTestServer(t)
+	got := decode[map[string]string](t, api(t, s, "GET", "/api/update", nil))
+	if got["version"] != "test-version" || got["available"] != "" || got["notesUrl"] != "" {
+		t.Fatalf("got %v", got)
+	}
+	wantError(t, api(t, s, "POST", "/api/update", nil), 409, "no_update")
+}

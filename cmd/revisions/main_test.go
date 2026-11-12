@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -51,11 +52,25 @@ func TestIsRevisionsRejectsOtherPrograms(t *testing.T) {
 }
 
 // buildRevisions compiles this command into dir with its version stamped the
-// way the release build stamps it, and returns the binary's path.
+// way the release build stamps it, and returns the binary's path. Its page is
+// a stand-in that carries the token, so tests can call the API without
+// building the web UI.
 func buildRevisions(t *testing.T, dir, name, version string) string {
 	t.Helper()
 	out := filepath.Join(dir, name)
-	cmd := exec.Command("go", "build", "-ldflags", "-X main.version="+version, "-o", out, ".")
+	index, err := filepath.Abs(filepath.Join("..", "..", "web", "dist", "index.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	scratch := t.TempDir()
+	page := filepath.Join(scratch, "index.html")
+	overlay := filepath.Join(scratch, "overlay.json")
+	replace, _ := json.Marshal(map[string]map[string]string{"Replace": {index: page}})
+	if os.WriteFile(page, []byte(`<meta name="revisions-token" content="__REVISIONS_TOKEN__">`), 0o644) != nil ||
+		os.WriteFile(overlay, replace, 0o644) != nil {
+		t.Fatal("could not write the stand-in page")
+	}
+	cmd := exec.Command("go", "build", "-overlay", overlay, "-ldflags", "-X main.version="+version, "-o", out, ".")
 	cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
 	if b, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("go build: %v\n%s", err, b)

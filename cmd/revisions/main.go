@@ -13,9 +13,11 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"syscall"
 	"time"
 
 	"github.com/ryan-ressmeyer/revisions/internal/server"
+	"github.com/ryan-ressmeyer/revisions/internal/update"
 	"github.com/ryan-ressmeyer/revisions/internal/workspace"
 	"github.com/ryan-ressmeyer/revisions/web"
 )
@@ -40,13 +42,24 @@ func main() {
 	}
 }
 
+// restartedEnv marks a program started by an update in place of the old one.
+// The browser tab is already open and reloads itself, and the old program may
+// still be letting go of the port.
+const restartedEnv = "REVISIONS_RESTARTED"
+
 func run(port int, browser bool) error {
 	addr := fmt.Sprintf("127.0.0.1:%d", port)
 	url := "http://" + addr
+	restarted := os.Getenv(restartedEnv) == "1"
+	os.Unsetenv(restartedEnv)
 
 	ln, err := net.Listen("tcp", addr)
+	for deadline := time.Now().Add(30 * time.Second); err != nil && restarted && time.Now().Before(deadline); {
+		time.Sleep(100 * time.Millisecond)
+		ln, err = net.Listen("tcp", addr)
+	}
 	if err != nil {
-		if !isRevisions(url) {
+		if restarted || !isRevisions(url) {
 			return err
 		}
 		fmt.Println("Revisions is already running at", url)
@@ -61,14 +74,39 @@ func run(port int, browser bool) error {
 		return err
 	}
 	fmt.Println("Revisions is running at", url)
-	if browser {
+	if browser && !restarted {
 		openBrowser(url)
 	}
-	if err := serve(ln, server.New(paths, version, port, web.Dist())); err != nil {
+	if exe, err := update.Executable(); err == nil {
+		go update.Cleanup(exe)
+	}
+	h := server.New(paths, version, port, web.Dist())
+	err = serve(ln, h)
+	if exe := h.Restart(); exe != "" {
+		// Requests still running after 30 s are dropped, as on quit.
+		fmt.Println("Revisions was updated and restarts.")
+		return restart(exe)
+	}
+	if err != nil {
 		return err
 	}
 	fmt.Println("Revisions has stopped.")
 	return nil
+}
+
+// restart runs exe, the updated program, with this program's arguments and
+// environment, so it serves the same port with the same folders. On macOS and
+// Linux it replaces this process, which keeps its place under the launcher or
+// terminal. Windows has no such call, so there exe starts as a new process in
+// the same console window and this one exits.
+func restart(exe string) error {
+	env := append(os.Environ(), restartedEnv+"=1")
+	if runtime.GOOS != "windows" {
+		return syscall.Exec(exe, os.Args, env)
+	}
+	cmd := exec.Command(exe, os.Args[1:]...)
+	cmd.Env, cmd.Stdin, cmd.Stdout, cmd.Stderr = env, os.Stdin, os.Stdout, os.Stderr
+	return cmd.Start()
 }
 
 // serve answers on ln until a page asks Revisions to quit, then stops
