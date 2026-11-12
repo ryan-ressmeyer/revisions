@@ -24,7 +24,7 @@ The old repository is read-only evidence of earlier choices. It is not a feature
 
 **Sending changes back.** A GitKraken-style commit graph shows local and remote history. Within the permissions of their own GitHub account, the collaborator can review diffs, commit, pull, push, create or switch branches, open a pull request, force-push, and discard changes [1, Q11–Q12, Q28]. Force-push and discard each show what they will destroy and require one confirmation [1, Q29]. Any commit in the history can be viewed as a read-only snapshot, from which the collaborator goes back to their branch or starts a new one [9].
 
-**Installing.** The collaborator follows a written page for macOS, Linux, or Windows that installs Git and a TeX distribution and then pastes one command. The command downloads Revisions from the latest GitHub Release of the public repository, which is MIT licensed, and puts it where the platform's app launcher finds it [9]. If `latexmk` is missing, Revisions guides them to install MacTeX, MiKTeX, or TeX Live [1, Q21, Q34].
+**Installing.** The collaborator follows a written page for macOS, Linux, or Windows that installs Git and a TeX distribution and then pastes one command. The command downloads Revisions from the latest GitHub Release of the public repository, which is MIT licensed, and puts it where the platform's app launcher finds it [9]. If `latexmk` is missing, Revisions guides them to install MacTeX, MiKTeX, or TeX Live [1, Q21, Q34]. When a new version is released, Revisions says so on its own screens, and one button installs it and restarts Revisions in the same tab [12].
 
 ## Reference-level explanation
 
@@ -413,6 +413,32 @@ Releases SHALL be published as GitHub Releases of `ryan-ressmeyer/revisions` [9]
 
 - WHEN the downloaded program does not match the release's checksum
 - THEN the install command leaves any installed Revisions unchanged and says why
+
+### Requirement: Update from inside Revisions
+
+A build stamped with a release version SHALL ask GitHub for the latest release when it starts and at most four times a day after that. The request SHALL carry no GitHub token and nothing about the user or their manuscripts. A failed or offline check SHALL be silent and SHALL delay neither the start nor any request. A development build SHALL never offer an update. A release SHALL be offered only when its version is higher than the running one, compared number by number, so that 0.10.0 is newer than 0.9.0, and never when it is a pre-release. While one is offered, the home screen and the project SHALL show "Version X is available" with an Update button and a link to the release notes, and Settings SHALL show the running version and the same action. Nothing SHALL be installed until the user presses Update.
+
+Update SHALL first save pending edits as Quit does, and SHALL refuse and say why when they cannot be saved. Revisions SHALL then download the program for the computer from that release over HTTPS, check it against the release's SHA-256 checksums, put it in place of the running program, cancel any running build, and restart on the same port with the same folders and options. The open tab SHALL come back on the new version by itself, and no second tab SHALL open. On any failure the running version SHALL stay in place and keep working, and Revisions SHALL say plainly what happened and show the install command as the manual way to update. The update request SHALL pass the same loopback hardening as every other request [12].
+
+#### Scenario: Update in place
+
+- WHEN a newer release exists and the user presses Update less than a second after typing
+- THEN the edit is saved, the new version replaces the program, and the same tab shows the new version from the same port
+
+#### Scenario: Tampered update
+
+- WHEN the downloaded program does not match the release's checksum, or the release has no program for the computer
+- THEN Revisions keeps the running version, says what went wrong, and shows the install command
+
+#### Scenario: Folder not writable
+
+- WHEN the folder that holds the program cannot be written
+- THEN Revisions changes nothing, says so, and shows the install command
+
+#### Scenario: No downgrade or pre-release
+
+- WHEN the latest release is not higher than the running version, is a pre-release, or the running build is a development build
+- THEN Revisions offers no update
 
 ### Requirement: Path containment
 

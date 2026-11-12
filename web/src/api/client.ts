@@ -105,6 +105,28 @@ export async function quit(): Promise<void> {
 	await send("POST", "/api/quit");
 }
 
+export interface UpdateInfo {
+	/** The running version, such as `v0.1.0` or `dev`. */
+	version: string;
+	/** The tag of a newer release, or "". */
+	available: string;
+	/** That release's page on GitHub, or "". */
+	notesUrl: string;
+}
+
+export function getUpdate(): Promise<UpdateInfo> {
+	return json("GET", "/api/update");
+}
+
+/**
+ * Installs the newer release; the server then restarts on it. Errors: 409
+ * `no_update`, 409 `updating`, 409 `not_writable` and 502 `update_failed`,
+ * both with `command`.
+ */
+export function installUpdate(): Promise<{ version: string }> {
+	return json("POST", "/api/update");
+}
+
 export interface Auth {
 	signedIn: boolean;
 	/** Null when signed out, and when signed in while GitHub is unreachable. */

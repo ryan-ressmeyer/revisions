@@ -23,7 +23,7 @@ Three options were put to Ryan for comments where a margin note cannot go: the h
 - Comments are now allowed in footnotes and captions in Rich text.
 
 ## Planned
-- **In-app update check.** Planned in answer to Ryan's question about updates; not yet built.
+- **In-app update.** Ryan was told: "On start, Revisions asks GitHub for the latest release and shows 'Version X is available' with an Update button. The button downloads the new version, checks it against the release checksums and restarts Revisions. The check sends nothing about the user or their manuscripts." Built on 2026-11-12, after v0.1.0, so the first release that can update itself is the one after v0.1.0.
 
 ## Verbatim
 Ryan's message after installing v0.1.0 and pressing Build PDF, 2026-11-11 (the pasted `latexmk` log is not reproduced):

@@ -42,17 +42,18 @@ export interface Server {
 }
 
 /**
- * Starts bin/revisions on fresh temporary directories, pointed at `fake` and
- * signed in unless `env` empties REVISIONS_GITHUB_TOKEN.
+ * Starts bin/revisions, or `program`, on fresh temporary directories, pointed
+ * at `fake` and signed in unless `env` empties REVISIONS_GITHUB_TOKEN.
  */
 export async function startServer(
 	fake: Fake,
 	env: Record<string, string> = {},
+	program = binary,
 ): Promise<Server> {
 	const dir = mkdtempSync(join(tmpdir(), "revisions-e2e-"));
 	const port = await freePort();
 	const home = join(dir, "home");
-	const child = spawn(binary, ["--no-browser", "--port", String(port)], {
+	const child = spawn(program, ["--no-browser", "--port", String(port)], {
 		stdio: "inherit",
 		env: {
 			...process.env,
@@ -165,9 +166,12 @@ export async function startFake(
 	};
 }
 
-/** Pastes {@link PAPER}'s URL on the home screen and waits for the editor. */
-export async function openPaper(page: Page) {
-	await page.goto("/");
+/**
+ * Pastes {@link PAPER}'s URL on the home screen and waits for the editor.
+ * `home` is the home screen's address, by default that of the test's server.
+ */
+export async function openPaper(page: Page, home = "/") {
+	await page.goto(home);
 	await page.getByLabel("GitHub link").fill(PAPER.url);
 	await page.getByRole("button", { name: "Open" }).click();
 	await expect(page.getByRole("textbox", { name: "Source" })).toBeVisible({

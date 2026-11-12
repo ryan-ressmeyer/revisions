@@ -169,6 +169,15 @@ Every Scenario in `specs/overview.md`, grouped by Requirement, with the automate
 | Install and upgrade | `cmd/revisions/install_test.go: TestInstallScript` (runs `install.sh` on Linux and macOS and `install.ps1` on Windows against a local release, then upgrades; CI's `install` job also opens the app from its `.app` bundle or Start menu shortcut and checks that the upgrade stops it) |
 | Tampered download | `cmd/revisions/install_test.go: TestInstallScript` |
 
+## Update from inside Revisions
+
+| Scenario | Test |
+|---|---|
+| Update in place | `cmd/revisions/update_test.go: TestUpdateReplacesTheRunningProgram` (two real programs and a local release; runs on Linux, macOS, and Windows in CI); `internal/update/update_test.go: TestInstallReplacesTheProgram`, `TestLatestAsksForThePublishedReleaseAndSendsNothingElse`; `web/e2e/update.spec.ts: "Update: the notice offers the new version, and Update saves, installs it, and the tab comes back on it"` |
+| Tampered update | `cmd/revisions/update_test.go: TestUpdateReplacesTheRunningProgram` (a bad checksum through the API); `internal/update/update_test.go: TestInstallRefusesABadChecksum`, `TestInstallRefusesAReleaseWithoutThisPlatform` |
+| Folder not writable | `internal/update/update_test.go: TestInstallSaysWhenTheFolderIsNotWritable` (skipped on Windows and as root) |
+| No downgrade or pre-release | `internal/update/update_test.go: TestNewer`; `internal/server/routes_app_test.go: TestADevBuildOffersNoUpdate` |
+
 ## Path containment
 
 | Scenario | Test |

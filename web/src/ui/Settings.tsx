@@ -1,4 +1,4 @@
-import { type FormEvent, useRef, useState } from "react";
+import { type FormEvent, type ReactNode, useRef, useState } from "react";
 import {
 	type Auth,
 	getSettings,
@@ -7,6 +7,7 @@ import {
 	signOut,
 } from "../api/client";
 import { explain } from "./errors";
+import { shown } from "./Update";
 
 type Appearance = "system" | "light" | "dark";
 const THEME_KEY = "revisions.theme";
@@ -44,11 +45,17 @@ export function SettingsButton({
 	auth,
 	onSignedOut,
 	onQuit,
+	version,
+	updateNotice,
 }: {
 	auth: Auth;
 	onSignedOut: () => void;
 	/** Saves pending edits and stops Revisions; resolves with a reason when it would not. */
 	onQuit: () => Promise<string>;
+	/** The running version, "" until known. */
+	version: string;
+	/** The update notice, when a newer version is available. */
+	updateNotice: ReactNode;
 }) {
 	const dialog = useRef<HTMLDialogElement>(null);
 	const [form, setForm] = useState<Settings | null>(null);
@@ -108,14 +115,22 @@ export function SettingsButton({
 		setQuitting(false);
 	};
 	const quitRow = (
-		<div className="account">
-			<span className="muted">
-				Revisions keeps running after this tab closes.
-			</span>
-			<button type="button" onClick={stop} disabled={quitting}>
-				Quit Revisions
-			</button>
-		</div>
+		<>
+			{version && (
+				<div className="account">
+					<span className="muted">Revisions {shown(version)}</span>
+				</div>
+			)}
+			{updateNotice}
+			<div className="account">
+				<span className="muted">
+					Revisions keeps running after this tab closes.
+				</span>
+				<button type="button" onClick={stop} disabled={quitting}>
+					Quit Revisions
+				</button>
+			</div>
+		</>
 	);
 
 	return (

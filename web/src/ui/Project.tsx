@@ -96,6 +96,7 @@ export function ProjectView({
 	id,
 	env,
 	settings,
+	updateNotice,
 	saveBeforeQuit,
 	onEnvChange,
 	onAuthLost,
@@ -104,6 +105,8 @@ export function ProjectView({
 	env: Env;
 	/** The Settings button, which the app owns. */
 	settings: ReactNode;
+	/** The update notice, when a newer version is available. */
+	updateNotice: ReactNode;
 	/** Where the app finds this view's save of pending edits before quitting. */
 	saveBeforeQuit: RefObject<() => Promise<boolean>>;
 	onEnvChange: (env: Env) => void;
@@ -856,6 +859,7 @@ export function ProjectView({
 				)}
 				{settings}
 			</header>
+			{updateNotice}
 			<div className="notice" role="status" aria-live="polite">
 				{notice}
 			</div>

@@ -2288,3 +2288,31 @@ dialog.wide {
 	text-underline-offset: 0.2em;
 	cursor: text;
 }
+
+/* Update */
+
+.banner.update {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.5rem 1rem;
+}
+
+.banner.update .alert {
+	flex-basis: 100%;
+	margin: 0;
+}
+
+dialog .banner.update {
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	margin-bottom: 1rem;
+}
+
+pre.command {
+	white-space: pre-wrap;
+	word-break: break-all;
+	padding: 0.75rem;
+	border-radius: 6px;
+	background: var(--surface-2);
+}
