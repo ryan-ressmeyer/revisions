@@ -482,6 +482,10 @@ func TestPollSeesASameSizeChangeToARecentFile(t *testing.T) {
 	s := newTestServer(t)
 	root := fixtureRepo(t, s, map[string]string{"notes.tex": "aaaa\n"})
 	main := filepath.Join(root, "notes.tex")
+	// Setting the repository up can take longer than the 2 s window on a slow
+	// machine, so make the file recent again just before the first poll.
+	now := time.Now()
+	os.Chtimes(main, now, now)
 	info, _ := os.Stat(main)
 	decode[stateBody](t, api(t, s, "GET", R+"/state", nil))
 	os.WriteFile(main, []byte("bbbb\n"), 0o644)
