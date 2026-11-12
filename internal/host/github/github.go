@@ -22,11 +22,11 @@ import (
 
 // ClientID identifies the Revisions OAuth App to GitHub. This line is its one
 // home: the release build compiles it in as it stands. It is public, not a
-// secret, because the device flow needs no client secret. While it is empty,
-// sign-in answers not_configured and the sign-in screen says why.
-// REVISIONS_GITHUB_CLIENT_ID overrides it, and an empty override turns
-// sign-in off.
-var ClientID = ""
+// secret, because the device flow needs no client secret.
+// REVISIONS_GITHUB_CLIENT_ID overrides it. An empty ID, built in or from the
+// override, turns sign-in off: it answers not_configured and the sign-in
+// screen says why.
+var ClientID = "Ov23licX8bUtKeJ9Xh2J"
 
 // Host talks to one GitHub. Create it with New.
 type Host struct {

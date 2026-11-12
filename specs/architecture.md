@@ -257,7 +257,7 @@ The programs are not signed by a developer. `curl` does not set the `com.apple.q
 
 ## Unresolved questions
 
-- [NEEDS CLARIFICATION: The OAuth App client ID. The author must register the app and set `ClientID` in `internal/host/github/github.go`.]
+None.
 
 ## Sources
 

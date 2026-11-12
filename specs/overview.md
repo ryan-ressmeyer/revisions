@@ -517,7 +517,6 @@ Redraft's OpenIrisDPI trust profile, protected objects, and separate Source View
 
 ## Unresolved questions
 
-- [NEEDS CLARIFICATION: The GitHub OAuth App client ID. The author must register the app and put its ID in the source; see `specs/architecture.md`, Host seam.]
 - [NEEDS CLARIFICATION: How a kamaji-hosted share page would reach collaborators outside the tailnet. Deferred.]
 
 ## Sources

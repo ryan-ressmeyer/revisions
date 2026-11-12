@@ -24,7 +24,7 @@ The installers are `scripts/install.sh` (macOS and Linux) and `scripts/install.p
 
 ## Status
 
-Version 1 is in development. Pushing a `v*` tag builds and publishes a release (`.github/workflows/release.yml`), but none has been published yet, so the install commands do not work until the first one is. Sign-in with a GitHub account is not configured yet, because the OAuth App client ID in `internal/host/github/github.go` is empty. The app has been run on Linux only. The installers are tested on Linux here and, in CI, on macOS and Windows, where CI also opens the installed app; nobody has yet used Revisions on a real Mac or Windows PC.
+Version 1 is in development. Pushing a `v*` tag builds and publishes a release (`.github/workflows/release.yml`), but none has been published yet, so the install commands do not work until the first one is. Sign-in uses the Revisions OAuth App, whose client ID is in `internal/host/github/github.go`; no collaborator has signed in through it yet. The app has been run on Linux only. The installers are tested on Linux here and, in CI, on macOS and Windows, where CI also opens the installed app; nobody has yet used Revisions on a real Mac or Windows PC.
 
 ## Building from source
 
