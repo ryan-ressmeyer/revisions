@@ -68,7 +68,11 @@ The first time, Revisions copies the manuscript to the `Revisions` folder in you
 
 ## Updating
 
-Run the line from step 2 again. It replaces Revisions with the latest version and stops the old one. Open Revisions again afterwards.
+When a new version is out, a line at the top of the Revisions tab says **Version X is available**, with a link to its release notes. Click **Update**. Revisions saves your work, installs the new version, and restarts, and the tab comes back on the new version by itself. **Settings** shows which version you have and offers the same button.
+
+If the update cannot finish, Revisions says why, keeps the version you have, and shows a command to update by hand. That command is the line from step 2: paste it into Terminal and press Return. It replaces Revisions with the latest version and stops the old one. Open Revisions again afterwards.
+
+Version 0.1.0 has no Update button. To update from it, run the line from step 2 once.
 
 ## If something goes wrong
 

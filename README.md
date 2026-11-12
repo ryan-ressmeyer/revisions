@@ -20,11 +20,11 @@ Each page takes a reader with nothing installed to an open manuscript, including
 - [Windows](docs/install-windows.md)
 - [Linux](docs/install-linux.md)
 
-The installers are `scripts/install.sh` (macOS and Linux) and `scripts/install.ps1` (Windows). Each downloads the latest release for the computer, checks it against the release's `SHA256SUMS`, installs it for the current user without administrator rights, and adds Revisions to Spotlight, the Start menu, or the applications menu. Running one again upgrades in place.
+The installers are `scripts/install.sh` (macOS and Linux) and `scripts/install.ps1` (Windows). Each downloads the latest release for the computer, checks it against the release's `SHA256SUMS`, installs it for the current user without administrator rights, and adds Revisions to Spotlight, the Start menu, or the applications menu. Running one again upgrades in place. After that, Revisions updates itself: when a newer release is out it shows **Version X is available**, and its **Update** button downloads the release's program, checks it against `SHA256SUMS`, replaces the running program, and restarts it in the same browser tab. The check asks GitHub's public releases API for the latest release and sends no token and nothing about the user.
 
 ## Status
 
-Version 1 is in development. Pushing a `v*` tag builds and publishes a release (`.github/workflows/release.yml`), but none has been published yet, so the install commands do not work until the first one is. Sign-in uses the Revisions OAuth App, whose client ID is in `internal/host/github/github.go`; no collaborator has signed in through it yet. The app has been run on Linux only. The installers are tested on Linux here and, in CI, on macOS and Windows, where CI also opens the installed app; nobody has yet used Revisions on a real Mac or Windows PC.
+Version 1 is in development. Pushing a `v*` tag builds and publishes a release (`.github/workflows/release.yml`); v0.1.0 is published. Version 0.1.0 predates the Update button, so moving from it takes the install command once. Sign-in uses the Revisions OAuth App, whose client ID is in `internal/host/github/github.go`; no collaborator has signed in through it yet. The app has been run on Linux only. The installers are tested on Linux here and, in CI, on macOS and Windows, where CI also opens the installed app; nobody has yet used Revisions on a real Mac or Windows PC.
 
 ## Building from source
 
