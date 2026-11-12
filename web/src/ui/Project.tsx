@@ -50,6 +50,7 @@ import {
 	type Edit,
 	ensurePreamble,
 } from "../core/changes/changes";
+import { marginNoteTrouble } from "../core/changes/notes";
 import type { SourceFile } from "../core/latex/project";
 import type { FileSync, SyncStatus } from "../core/sync/sync";
 import { Editor, goToLine } from "./Editor";
@@ -1071,7 +1072,13 @@ export function ProjectView({
 									)}
 								</div>
 								{running && <div className="progress" aria-hidden="true" />}
-								{build && <BuildProblems build={build} onOpen={openChosen} />}
+								{build && (
+									<BuildProblems
+										build={build}
+										files={sourceFiles}
+										onOpen={openChosen}
+									/>
+								)}
 								{texMissing ? (
 									<div className="pdf-empty">
 										<TexGuidance platform={env.platform} onCheck={checkTex} />
@@ -1354,13 +1361,17 @@ const problemTitle: Partial<Record<BuildStatus["state"], string>> = {
 
 function BuildProblems({
 	build,
+	files,
 	onOpen,
 }: {
 	build: BuildStatus;
+	files: () => readonly SourceFile[];
 	onOpen: (path: string, jump: Jump) => void;
 }) {
 	const title = problemTitle[build.state];
 	if (!title) return null;
+	// Scans the sources only when the errors are about margin notes.
+	const notes = marginNoteTrouble(build.errors, files());
 	return (
 		<div className="build-problems" role="alert">
 			<h2>{title}</h2>
@@ -1370,6 +1381,25 @@ function BuildProblems({
 					: "No PDF has been built yet."}
 				{build.errors.length > 0 && " Click a problem to go to that line."}
 			</p>
+			{notes && <p>{notes.explanation}</p>}
+			{notes && notes.comments.length > 0 && (
+				<ul aria-label="Comments that cannot have a margin note">
+					{notes.comments.map((c) => (
+						<li key={`${c.path}:${c.line}:${c.text}`}>
+							<button
+								type="button"
+								className="link"
+								onClick={() => onOpen(c.path, { line: c.line, column: 0 })}
+							>
+								<span className="where">
+									{c.path}, line {c.line}:
+								</span>{" "}
+								Comment in {c.place}: “{c.text}”
+							</button>
+						</li>
+					))}
+				</ul>
+			)}
 			{build.errors.length > 0 && (
 				<ul>
 					{build.errors.map((e, i) => (

@@ -136,6 +136,7 @@ Every Scenario in `specs/overview.md`, grouped by Requirement, with the automate
 | Log of the PDF on screen | `internal/build/build_test.go: TestTheGoodPDFKeepsTheLogOfItsBuild`; `internal/server/routes_build_test.go: TestBuildLifecycle/Failed_build`; `web/e2e/build.spec.ts: "Build log: shows the log of the build whose PDF is on screen, after a failed build"` |
 | Rebuild after a failure | `internal/build/build_test.go: TestRebuildAfterAFailureShowsTheErrorAgain`, `TestRecoveryAfterABiberFailure` |
 | Fixed after a failure | `internal/build/build_test.go: TestRebuildAfterAFailureShowsTheErrorAgain`, `TestRecoveryAfterABiberFailure` (skipped without biber) |
+| Comment where a margin note cannot go | `web/src/core/changes/notes.test.ts: "a comment where a margin note cannot go is explained and named, with its file and line"`, `"Not in outer par mode is explained the same way"`, `"nothing to explain for other errors, or for a document without comments"`, `"comments only in ordinary text still get the explanation, with no names"`; `web/e2e/build.spec.ts: "Comment where a margin note cannot go: the failure says why and opens the comment"` |
 
 ## Local build isolation
 

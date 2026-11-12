@@ -1,4 +1,4 @@
-import { mkdtempSync, symlinkSync } from "node:fs";
+import { mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
@@ -207,6 +207,42 @@ test.describe("with a built PDF", () => {
 		await page.keyboard.press("Escape");
 		await expect(dialog).toBeHidden();
 	});
+});
+
+test("Comment where a margin note cannot go: the failure says why and opens the comment", async ({
+	page,
+	server,
+}) => {
+	test.setTimeout(120_000);
+	await openPaper(page);
+	const main = join(server.paper, "main.tex");
+	const text = readFileSync(main, "utf8")
+		.replace(
+			"\\begin{document}",
+			"\\usepackage{changes}\n\\definechangesauthor{GH}\n\\begin{document}",
+		)
+		.replace(
+			"\\centering\n  \\includegraphics",
+			"\\centering\n  \\highlight[id=GH, comment={Check the axis}]{Trace.}\n  \\includegraphics",
+		);
+	writeFileSync(main, text);
+	const line = text.slice(0, text.indexOf("\\highlight")).split("\n").length;
+
+	await page.getByRole("button", { name: "Build PDF" }).click();
+	const problems = page.getByRole("alert").filter({
+		hasText: "The PDF could not be built",
+	});
+	await expect(problems).toContainText("Float(s) lost", { timeout: 60_000 });
+	await expect(problems).toContainText(
+		"A comment sits where LaTeX cannot place a margin note",
+	);
+	await problems
+		.getByRole("button", {
+			name: `main.tex, line ${line}: Comment in a figure: “Check the axis”`,
+		})
+		.click();
+	await expect(openFileName(page)).toHaveText("main.tex");
+	await expect.poll(() => cursorLine(page)).toBe(String(line));
 });
 
 test.describe("without TeX", () => {

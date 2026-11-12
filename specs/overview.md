@@ -309,7 +309,7 @@ Revisions SHALL offer Quit Revisions in Settings, because the installed app has 
 
 ### Requirement: Explicit PDF builds
 
-Revisions SHALL compile only when the user presses the build button or shortcut. It SHALL show an out-of-date warning while the PDF lags the source. A failed build SHALL keep the last good PDF visible and show the error. The log of the build that made the PDF on screen SHALL stay available after later failed builds [8]. A build after one that failed, timed out, or was cancelled SHALL compile again from the start, so that it shows the real error again when nothing changed and succeeds once the source is fixed, with no cache to clear by hand [11].
+Revisions SHALL compile only when the user presses the build button or shortcut. It SHALL show an out-of-date warning while the PDF lags the source. A failed build SHALL keep the last good PDF visible and show the error. The log of the build that made the PDF on screen SHALL stay available after later failed builds [8]. A build after one that failed, timed out, or was cancelled SHALL compile again from the start, so that it shows the real error again when nothing changed and succeeds once the source is fixed, with no cache to clear by hand [11]. The `changes` package draws a comment as a margin note, which LaTeX cannot place in some parts of a document. When a build fails with `Float(s) lost` or `Not in outer par mode` and the document contains comments, the failure SHALL explain in plain language that a comment sits where LaTeX cannot place a margin note, giving as examples the abstract of some journal templates, a caption, a footnote, a table, and a boxed area. It SHALL also name each comment found in such a place, with a link that opens it [11].
 
 #### Scenario: Edit after build
 
@@ -335,6 +335,11 @@ Revisions SHALL compile only when the user presses the build button or shortcut.
 
 - WHEN a build fails, including one whose bibliography step failed too, and the user fixes the source and builds again
 - THEN the PDF builds, with its citations resolved
+
+#### Scenario: Comment where a margin note cannot go
+
+- WHEN a build fails with `Float(s) lost` because a comment sits in a figure
+- THEN the failure explains that LaTeX cannot place a comment's margin note there and names that comment, and clicking it opens the comment's line
 
 ### Requirement: Local build isolation
 
