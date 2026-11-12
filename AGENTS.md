@@ -1,6 +1,6 @@
 # Revisions
 
-Revisions is a rewrite of `~/repos/redraft-editor/`. Version 1 is being implemented on branch `v1`. Read `specs/overview.md` for what the product does and `specs/architecture.md` for how the code is arranged before changing anything.
+Revisions is a rewrite of `~/repos/redraft-editor/`. Version 1 is released from `main`. Read `specs/overview.md` for what the product does and `specs/architecture.md` for how the code is arranged before changing anything.
 
 ## Scope
 
@@ -8,7 +8,7 @@ Revisions is a rewrite of `~/repos/redraft-editor/`. Version 1 is being implemen
 - Treat the old repository as read-only reference. Its design and implementation are evidence of earlier choices, not requirements for this rewrite. Do not copy its code.
 - The spec leads. A behaviour change updates the spec in the same commit. Record unresolved decisions as `[NEEDS CLARIFICATION: <question>]`. Do not invent requirements to fill gaps.
 - Looking up library and API documentation is approved. Other external research requires user approval: name the decision it would inform, the scope, and the expected value, then wait.
-- Commit on `v1` with single-line messages and no trailers. Never push or publish without asking the user. Branches named `local/*` hold history from before publication and are never pushed.
+- Do new work on a branch off `main`, never on `main` itself. Commit with single-line messages and no trailers. Never push, merge into `main`, tag, or publish without asking the user. Branches named `local/*` hold history from before publication and are never pushed.
 - Ask interview questions one at a time. Save questions and verbatim answers when the user says the interview is done; confirm the note was saved before asking them to exit.
 
 ## Implementation rules
