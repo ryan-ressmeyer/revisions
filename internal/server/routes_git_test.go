@@ -550,6 +550,103 @@ func TestBranchesAndCheckout(t *testing.T) {
 	wantError(t, checkout("--detach"), 404, "not_found")
 }
 
+type snapshotStatus struct {
+	statusBody
+	Snapshot *struct {
+		Subject  string
+		Date     string
+		ReturnTo *string `json:"returnTo"`
+	}
+}
+
+// Scenarios: View an earlier version, Back to the branch, Branch from an
+// earlier version, Uncommitted work blocks viewing.
+func TestViewAnEarlierVersion(t *testing.T) {
+	h := newOpened(t)
+	first := h.head(t)
+	firstText := tree(t, h.clone)["main.tex"]
+	write(t, h.clone, "main.tex", "the later text\n")
+	h.commit(t, "Later")
+	later := h.head(t)
+
+	view := func(body map[string]string) *httptest.ResponseRecorder {
+		return h.call(t, "POST", testRepo+"/git/checkout", body)
+	}
+	status := func() snapshotStatus {
+		return ok[snapshotStatus](t, h.call(t, "GET", testRepo+"/git/status", nil))
+	}
+	if !strings.Contains(h.call(t, "GET", testRepo+"/git/status", nil).Body.String(), `"snapshot":null`) {
+		t.Fatal("on a branch the status lacks snapshot: null")
+	}
+
+	// Viewing an earlier version puts the clone on it, detached.
+	st := ok[snapshotStatus](t, view(map[string]string{"commit": first[:10]}))
+	if st.Branch != nil || st.Head != first || st.Snapshot == nil || st.Snapshot.Subject != "Initial manuscript" ||
+		st.Snapshot.Date == "" || st.Snapshot.ReturnTo == nil || *st.Snapshot.ReturnTo != "main" {
+		t.Fatalf("snapshot status: %+v %+v", st.statusBody, st.Snapshot)
+	}
+	if got := tree(t, h.clone)["main.tex"]; got != firstText {
+		t.Fatalf("main.tex on the snapshot = %q, want %q", got, firstText)
+	}
+
+	// A snapshot cannot be changed: the save is refused and the disk keeps its bytes.
+	file := h.call(t, "GET", testRepo+"/file?path=main.tex", nil)
+	save := map[string]string{"baseHash": file.Header().Get("X-Revisions-Hash"), "text": "an edit to the past\n"}
+	wantError(t, h.call(t, "PUT", testRepo+"/file?path=main.tex", save), 409, "detached")
+	if got := tree(t, h.clone)["main.tex"]; got != firstText {
+		t.Fatalf("a refused save changed main.tex to %q", got)
+	}
+
+	// Moving from one snapshot to another still knows the way back.
+	if st := ok[snapshotStatus](t, view(map[string]string{"commit": later})); st.Head != later || st.Branch != nil ||
+		st.Snapshot == nil || st.Snapshot.Subject != "Later" || *st.Snapshot.ReturnTo != "main" {
+		t.Fatalf("second snapshot: %+v %+v", st.statusBody, st.Snapshot)
+	}
+
+	// Uncommitted work blocks viewing another version, and nothing moves.
+	write(t, h.clone, "notes.txt", "made outside Revisions\n")
+	before := tree(t, h.clone)
+	e := errorBody(t, view(map[string]string{"commit": first}), 409, "dirty")
+	if files, _ := json.Marshal(e["files"]); string(files) != `[{"path":"notes.txt","status":"untracked"}]` {
+		t.Errorf("dirty files = %s", files)
+	}
+	if !maps.Equal(tree(t, h.clone), before) || h.head(t) != later {
+		t.Fatal("a refused view changed the clone")
+	}
+	os.Remove(filepath.Join(h.clone, "notes.txt"))
+
+	for _, sha := range []string{"0123456789abcdef0123456789abcdef01234567", "--all", "HEAD"} {
+		wantError(t, view(map[string]string{"commit": sha}), 404, "not_found")
+	}
+	wantError(t, view(map[string]string{"commit": first, "branch": "main"}), 400, "bad_request")
+
+	// Back to the branch.
+	if st := ok[snapshotStatus](t, view(map[string]string{"branch": "main"})); st.Branch == nil || *st.Branch != "main" || st.Head != later || st.Snapshot != nil {
+		t.Fatalf("back on main: %+v %+v", st.statusBody, st.Snapshot)
+	}
+
+	// A branch started from an earlier version can be edited.
+	ok[snapshotStatus](t, view(map[string]string{"commit": first}))
+	if st := ok[statusBody](t, h.call(t, "POST", testRepo+"/git/branches", map[string]string{"name": "from-first"})); st.Branch == nil || *st.Branch != "from-first" || st.Head != first {
+		t.Fatalf("branch from the snapshot: %+v", st)
+	}
+	file = h.call(t, "GET", testRepo+"/file?path=main.tex", nil)
+	save["baseHash"] = file.Header().Get("X-Revisions-Hash")
+	ok[map[string]any](t, h.call(t, "PUT", testRepo+"/file?path=main.tex", save))
+
+	// With no branch left to go back to, the way back is the default branch.
+	h.commit(t, "Edit the past")
+	ok[snapshotStatus](t, view(map[string]string{"commit": first}))
+	gitIn(t, h.clone, "branch", "-D", "from-first", "main")
+	if st := status(); st.Snapshot == nil || st.Snapshot.ReturnTo == nil || *st.Snapshot.ReturnTo != "main" {
+		t.Fatalf("fallback: %+v", st.Snapshot)
+	}
+	// The local branch is gone, so it comes back from GitHub's copy.
+	if st := ok[snapshotStatus](t, view(map[string]string{"branch": "main"})); *st.Branch != "main" || st.Head != gitIn(t, h.bare, "rev-parse", "main") {
+		t.Fatalf("back to the default branch: %+v", st.statusBody)
+	}
+}
+
 func TestLogAndCommitDetail(t *testing.T) {
 	h := newOpened(t)
 	root := h.head(t)

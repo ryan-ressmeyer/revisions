@@ -22,7 +22,7 @@ The old repository is read-only evidence of earlier choices. It is not a feature
 
 **Commenting and tracking changes.** The collaborator highlights text and attaches a comment. The comment lives in the LaTeX source as a `changes` macro, and a Resolve button removes it [1, Q6, Q30]. Tracked changes are off by default. When the collaborator turns them on for a session, edits are recorded as `changes` markup, and each tracked change has Accept and Reject buttons. Accept all and Reject all apply to every tracked change [1, Q8, Q38].
 
-**Sending changes back.** A GitKraken-style commit graph shows local and remote history. Within the permissions of their own GitHub account, the collaborator can review diffs, commit, pull, push, create or switch branches, open a pull request, force-push, and discard changes [1, Q11–Q12, Q28]. Force-push and discard each show what they will destroy and require one confirmation [1, Q29].
+**Sending changes back.** A GitKraken-style commit graph shows local and remote history. Within the permissions of their own GitHub account, the collaborator can review diffs, commit, pull, push, create or switch branches, open a pull request, force-push, and discard changes [1, Q11–Q12, Q28]. Force-push and discard each show what they will destroy and require one confirmation [1, Q29]. Any commit in the history can be viewed as a read-only snapshot, from which the collaborator goes back to their branch or starts a new one [9].
 
 **Installing.** The collaborator follows copy-paste commands or web instructions for macOS, Linux, or Windows. If `latexmk` is missing, Revisions guides them to install MacTeX, MiKTeX, or TeX Live [1, Q21, Q34].
 
@@ -413,6 +413,35 @@ Revisions SHALL offer viewing changes and diffs, commit, pull, push, create or s
 
 - WHEN the collaborator's branch was deleted on GitHub, for example after its pull request was closed, and they choose Get latest
 - THEN Revisions leaves the working tree unchanged, says in plain language that the branch was removed from GitHub, and offers Send to put it back
+
+### Requirement: View an earlier version
+
+A commit selected in the history SHALL offer View this version, which puts the clone on that commit as a snapshot (a detached HEAD), so the editor shows the files as they were and a build compiles that version. Revisions SHALL refuse while there are uncommitted changes, as it refuses to switch branches. While on a snapshot, the project SHALL show a banner that names the version by its date and subject, says in plain language that it cannot be changed here, and offers Back to the branch most recently left, or to the default branch when there is none, and Start a branch from this version. The editor SHALL be read-only on a snapshot and the server SHALL refuse saves there, whether the snapshot came from the history or from a commit URL. A PDF built from another version SHALL be marked out of date. Revisions SHALL NOT restore an earlier version onto a branch or rewrite history [9].
+
+#### Scenario: View an earlier version
+
+- WHEN the user selects an earlier commit in the history and chooses View this version
+- THEN the editor shows the files as they were at that commit, refuses edits, and a banner names the version and offers the way back
+
+#### Scenario: Back to the branch
+
+- WHEN the user chooses Back to the branch in the snapshot banner
+- THEN the clone is on that branch again and the editor accepts edits
+
+#### Scenario: Branch from an earlier version
+
+- WHEN the user chooses Start a branch from this version and names the branch
+- THEN a new branch starts at that commit and the editor accepts edits
+
+#### Scenario: Uncommitted work blocks viewing
+
+- WHEN the clone has uncommitted changes and the user chooses View this version
+- THEN Revisions leaves the working tree unchanged and lists the changes that must be committed or discarded first
+
+#### Scenario: PDF from another version
+
+- WHEN the PDF was built from one version and the user moves to another
+- THEN the PDF view shows the out-of-date warning
 
 ### Requirement: Destructive-operation confirmation
 

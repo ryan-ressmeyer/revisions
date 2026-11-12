@@ -163,6 +163,12 @@ func (s *Server) putFile(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &body) {
 		return
 	}
+	// A snapshot shows an earlier version and is never changed. Without Git
+	// there is no snapshot to protect, so the save goes on.
+	if g, err := workspace.GitStatus(root); err == nil && g.Branch == nil && g.Head != "" {
+		writeError(w, http.StatusConflict, "detached", "This is an earlier version of the manuscript, so it cannot be changed. Go back to your branch, or start a branch from this version, to edit.")
+		return
+	}
 	hash, written, err := workspace.Save(root, r.URL.Query().Get("path"), body.BaseHash, body.Text)
 	if err != nil {
 		writeWorkspaceError(w, err)

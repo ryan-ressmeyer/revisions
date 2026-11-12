@@ -3,6 +3,7 @@ package gitx
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 )
 
@@ -52,6 +53,44 @@ func CreateBranch(ctx context.Context, dir, name, start string, track bool) erro
 func Detach(ctx context.Context, dir, sha string) error {
 	_, err := git(ctx, dir, "switch", "--quiet", "--detach", "--end-of-options", sha)
 	return err
+}
+
+// ReturnBranch is where a detached HEAD goes back to: the branch most recently
+// checked out that still exists here, else origin's default branch, else "".
+//
+// ponytail: looks back 20 checkouts through Git's @{-n}; after more snapshot
+// hops than that it offers the default branch. Parse the HEAD reflog in one
+// call if anyone ever hops further.
+func ReturnBranch(ctx context.Context, dir string) string {
+	for n := 1; n <= 20; n++ {
+		out, err := git(ctx, dir, "rev-parse", "--symbolic-full-name", "@{-"+strconv.Itoa(n)+"}")
+		if err != nil {
+			break // no older checkout, or one of a branch since deleted
+		}
+		// A detached checkout prints nothing.
+		if name, ok := strings.CutPrefix(strings.TrimSpace(out), "refs/heads/"); ok {
+			if _, exists, _ := Resolve(ctx, dir, "refs/heads/"+name); exists {
+				return name
+			}
+		}
+	}
+	out, err := git(ctx, dir, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimPrefix(strings.TrimSpace(out), "origin/")
+}
+
+// HeadCommit describes the commit HEAD is on.
+func HeadCommit(ctx context.Context, dir string) (LogCommit, error) {
+	commits, err := log(ctx, dir, "--max-count=1", "HEAD")
+	if err == nil && len(commits) == 0 {
+		err = &Error{Command: "log", Stderr: "no commit at HEAD"}
+	}
+	if err != nil {
+		return LogCommit{}, err
+	}
+	return commits[0], nil
 }
 
 // FastForward moves the current branch forward to ref.

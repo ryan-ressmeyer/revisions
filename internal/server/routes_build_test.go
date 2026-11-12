@@ -253,6 +253,41 @@ func TestBuildLifecycle(t *testing.T) {
 const shortSecond = 2 * time.Millisecond
 
 // Scenario: Runaway build.
+// Scenario: PDF from another version.
+func TestPDFFromAnotherVersionIsOutOfDate(t *testing.T) {
+	needTeX(t)
+	s := newTestServer(t)
+	root := fixtureRepo(t, s, nil)
+	first := gitIn(t, root, "rev-parse", "HEAD")
+	main, _ := os.ReadFile(filepath.Join(root, "main.tex"))
+	writeFiles(t, root, map[string]string{"main.tex": string(main) + "% a later line\n"})
+	gitIn(t, root, "commit", "-q", "-am", "Later")
+
+	stale := func() bool { return decode[stateBody](t, api(t, s, "GET", R+"/state", nil)).Build.Stale }
+	checkout := func(body map[string]string) {
+		t.Helper()
+		if rec := api(t, s, "POST", R+"/git/checkout", body); rec.Code != 200 {
+			t.Fatalf("checkout %v: %d %s", body, rec.Code, rec.Body)
+		}
+	}
+
+	if b := startBuild(t, s); b.State != "succeeded" || stale() {
+		t.Fatalf("build on main: %+v", b)
+	}
+	checkout(map[string]string{"commit": first})
+	if !stale() {
+		t.Error("the PDF of the later version is not out of date on the earlier one")
+	}
+	// A snapshot can be built, and its PDF is out of date back on the branch.
+	if b := startBuild(t, s); b.State != "succeeded" || stale() {
+		t.Fatalf("build on the snapshot: %+v", b)
+	}
+	checkout(map[string]string{"branch": "main"})
+	if !stale() {
+		t.Error("the PDF of the snapshot is not out of date back on main")
+	}
+}
+
 func TestRunawayBuildTimesOut(t *testing.T) {
 	needTeX(t)
 	s := newTestServer(t)

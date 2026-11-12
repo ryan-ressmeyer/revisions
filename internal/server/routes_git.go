@@ -165,6 +165,14 @@ type statusResponse struct {
 	Permissions  struct {
 		Push bool `json:"push"`
 	} `json:"permissions"`
+	Snapshot *snapshot `json:"snapshot"` // null on a branch
+}
+
+// snapshot is the version a detached HEAD shows, and where "back" goes.
+type snapshot struct {
+	Subject  string  `json:"subject"`
+	Date     string  `json:"date"`
+	ReturnTo *string `json:"returnTo"` // null when there is no branch to go back to
 }
 
 // writeStatus answers GET R/git/status, and every route that changes the
@@ -177,6 +185,14 @@ func (s *Server) writeStatus(w http.ResponseWriter, r *http.Request, id workspac
 	body := statusResponse{
 		Branch: branchOrNull(st.Branch), Head: st.Head, Upstream: branchOrNull(st.Upstream), UpstreamGone: st.UpstreamGone,
 		Ahead: st.Ahead, Behind: st.Behind, Files: st.Files, Merging: st.Merging, Conflicts: st.Conflicts,
+	}
+	if st.Branch == "" && st.Head != "" {
+		c, err := gitx.HeadCommit(r.Context(), dir)
+		if err != nil {
+			gitFailed(w, err)
+			return
+		}
+		body.Snapshot = &snapshot{Subject: c.Subject, Date: c.Date, ReturnTo: branchOrNull(gitx.ReturnBranch(r.Context(), dir))}
 	}
 	// Signed out or offline, pushing is not on offer.
 	body.Permissions.Push, _ = s.canPush(r.Context(), id, false)
@@ -430,8 +446,13 @@ func (s *Server) gitBranch(w http.ResponseWriter, r *http.Request, id workspace.
 func (s *Server) gitCheckout(w http.ResponseWriter, r *http.Request, id workspace.RepoID, dir string) {
 	var body struct {
 		Branch string `json:"branch"`
+		Commit string `json:"commit"`
 	}
 	if !readJSON(w, r, &body) {
+		return
+	}
+	if body.Branch != "" && body.Commit != "" {
+		badRequest(w, "Name a branch or a commit, not both.")
 		return
 	}
 	ctx := r.Context()
@@ -439,7 +460,31 @@ func (s *Server) gitCheckout(w http.ResponseWriter, r *http.Request, id workspac
 	if !ok {
 		return
 	}
-	if st.Branch != body.Branch {
+	if body.Commit != "" {
+		// A snapshot: the commit checked out with no branch (detached HEAD).
+		sha, found := "", shaPattern.MatchString(body.Commit)
+		if found {
+			var err error
+			if sha, found, err = gitx.Resolve(ctx, dir, body.Commit+"^{commit}"); err != nil {
+				gitFailed(w, err)
+				return
+			}
+		}
+		switch {
+		case !found:
+			writeError(w, http.StatusNotFound, "not_found", "This copy of the repository has no such commit.")
+			return
+		case st.Branch == "" && st.Head == sha:
+		case st.Dirty():
+			dirty(w, st, "You have changes that are not committed. Commit or discard them before looking at another version.")
+			return
+		default:
+			if err := gitx.Detach(ctx, dir, sha); err != nil {
+				gitFailed(w, err)
+				return
+			}
+		}
+	} else if st.Branch != body.Branch {
 		_, local, _ := gitx.Resolve(ctx, dir, "refs/heads/"+body.Branch)
 		remote := "refs/remotes/origin/" + body.Branch
 		_, onRemote, _ := gitx.Resolve(ctx, dir, remote)
