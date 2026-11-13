@@ -36,6 +36,8 @@ type pushPermission struct {
 	push  bool
 	token string
 	at    time.Time
+	err   error
+	epoch uint64
 }
 
 // The status is polled every 2 s; the host is asked at most this often.
@@ -85,36 +87,39 @@ func (s *Server) registerGit(mux *http.ServeMux) {
 // canPush reports whether the signed-in account may push to the repository.
 // The answer is remembered for permissionTTL unless fresh is set. An error is
 // remembered as "no", so a status poll does not retry a failing lookup.
-func (s *Server) canPush(ctx context.Context, id workspace.RepoID, fresh bool) (bool, error) {
-	token := s.hostToken()
-	if token == "" {
-		return false, host.ErrUnauthorized
-	}
+func (s *Server) canPush(ctx context.Context, id workspace.RepoID, token string, fresh bool) (bool, error) {
 	g := &s.git
 	g.permMu.Lock()
 	defer g.permMu.Unlock()
-	if p, ok := g.perms[id]; ok && !fresh && p.token == token && time.Since(p.at) < permissionTTL {
-		return p.push, nil
+	if p, ok := g.perms[id]; ok && !fresh && p.token == token && p.epoch == s.auth.epoch.Load() && time.Since(p.at) < permissionTTL {
+		return p.push, p.err
 	}
+	epoch := s.auth.epoch.Load()
 	info, err := s.auth.host.Repository(ctx, token, host.Repo{Owner: id.Owner, Name: id.Name})
-	g.perms[id] = pushPermission{push: info.Push, token: token, at: time.Now()}
-	return info.Push, err
+	err = s.hostFailure(ctx, token, err)
+	g.perms[id] = pushPermission{push: info.Push && err == nil, token: token, at: time.Now(), err: err, epoch: epoch}
+	return info.Push && err == nil, err
 }
 
 // requireToken returns the GitHub token, or answers 401 auth_required.
-func (s *Server) requireToken(w http.ResponseWriter) (string, bool) {
-	token := s.hostToken()
-	if token == "" {
-		hostFailed(w, host.ErrUnauthorized)
+func (s *Server) requireToken(w http.ResponseWriter, r *http.Request) (string, bool) {
+	token, err := s.hostToken(r.Context())
+	if err != nil {
+		hostFailed(w, err)
 	}
-	return token, token != ""
+	return token, err == nil
 }
 
 // commitIdentity is who commits when Git has no identity configured: the
 // GitHub account, at its no-reply address.
 func (s *Server) commitIdentity(ctx context.Context) gitx.Identity {
-	user, err := s.hostUser(ctx, s.hostToken())
+	token, err := s.hostToken(ctx)
 	if err != nil {
+		return gitx.Identity{}
+	}
+	user, err := s.hostUser(ctx, token)
+	if err != nil {
+		s.hostFailure(ctx, token, err)
 		return gitx.Identity{}
 	}
 	name := user.Name
@@ -165,7 +170,8 @@ type statusResponse struct {
 	Permissions  struct {
 		Push bool `json:"push"`
 	} `json:"permissions"`
-	Snapshot *snapshot `json:"snapshot"` // null on a branch
+	Snapshot  *snapshot    `json:"snapshot"` // null on a branch
+	AuthError *authProblem `json:"authError,omitempty"`
 }
 
 // snapshot is the version a detached HEAD shows, and where "back" goes.
@@ -195,7 +201,11 @@ func (s *Server) writeStatus(w http.ResponseWriter, r *http.Request, id workspac
 		body.Snapshot = &snapshot{Subject: c.Subject, Date: c.Date, ReturnTo: branchOrNull(gitx.ReturnBranch(r.Context(), dir))}
 	}
 	// Signed out or offline, pushing is not on offer.
-	body.Permissions.Push, _ = s.canPush(r.Context(), id, false)
+	token, err := s.hostToken(r.Context())
+	if err == nil {
+		body.Permissions.Push, err = s.canPush(r.Context(), id, token, false)
+	}
+	body.AuthError = problemFor(err)
 	writeJSON(w, http.StatusOK, body)
 }
 
@@ -225,12 +235,15 @@ func (s *Server) gitLog(w http.ResponseWriter, r *http.Request, id workspace.Rep
 	}
 	// The graph is still worth showing signed out or offline, without pull requests.
 	pulls := []host.PullRequest{}
-	if token := s.hostToken(); token != "" {
-		if list, err := s.auth.host.PullRequests(r.Context(), token, host.Repo{Owner: id.Owner, Name: id.Name}); err == nil {
+	token, authErr := s.hostToken(r.Context())
+	if authErr == nil {
+		list, err := s.auth.host.PullRequests(r.Context(), token, host.Repo{Owner: id.Owner, Name: id.Name})
+		authErr = s.hostFailure(r.Context(), token, err)
+		if authErr == nil {
 			pulls = list
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"commits": commits, "pulls": pulls})
+	writeJSON(w, http.StatusOK, map[string]any{"commits": commits, "pulls": pulls, "authError": problemFor(authErr)})
 }
 
 var (
@@ -285,19 +298,19 @@ func (s *Server) gitCommit(w http.ResponseWriter, r *http.Request, id workspace.
 }
 
 func (s *Server) gitFetch(w http.ResponseWriter, r *http.Request, id workspace.RepoID, dir string) {
-	token, ok := s.requireToken(w)
+	token, ok := s.requireToken(w, r)
 	if !ok {
 		return
 	}
 	if err := gitx.Fetch(r.Context(), dir, s.gitAuth(token)); err != nil {
-		gitFailed(w, err)
+		s.networkGitFailed(w, r, token, err)
 		return
 	}
 	s.writeStatus(w, r, id, dir)
 }
 
 func (s *Server) gitPull(w http.ResponseWriter, r *http.Request, id workspace.RepoID, dir string) {
-	token, ok := s.requireToken(w)
+	token, ok := s.requireToken(w, r)
 	if !ok {
 		return
 	}
@@ -308,7 +321,7 @@ func (s *Server) gitPull(w http.ResponseWriter, r *http.Request, id workspace.Re
 	// get, and the fetch is what notices a branch removed on GitHub.
 	ctx := r.Context()
 	if err := gitx.Fetch(ctx, dir, s.gitAuth(token)); err != nil {
-		gitFailed(w, err)
+		s.networkGitFailed(w, r, token, err)
 		return
 	}
 	st, ok := onBranch(w, r, dir)
@@ -353,7 +366,7 @@ func (s *Server) gitMergeAbort(w http.ResponseWriter, r *http.Request, id worksp
 // push is the shared tail of push and force-push: it checks the account's
 // permission afresh, pushes the current branch, and answers.
 func (s *Server) push(w http.ResponseWriter, r *http.Request, id workspace.RepoID, dir string, lease *string, rejected string) {
-	token, ok := s.requireToken(w)
+	token, ok := s.requireToken(w, r)
 	if !ok {
 		return
 	}
@@ -361,7 +374,7 @@ func (s *Server) push(w http.ResponseWriter, r *http.Request, id workspace.RepoI
 	if !ok {
 		return
 	}
-	allowed, err := s.canPush(r.Context(), id, true)
+	allowed, err := s.canPush(r.Context(), id, token, true)
 	if err != nil {
 		hostFailed(w, err)
 		return
@@ -375,7 +388,7 @@ func (s *Server) push(w http.ResponseWriter, r *http.Request, id workspace.RepoI
 	case errors.Is(err, gitx.ErrRejected):
 		writeError(w, http.StatusConflict, "rejected", rejected)
 	case err != nil:
-		gitFailed(w, err)
+		s.networkGitFailed(w, r, token, err)
 	default:
 		s.writeStatus(w, r, id, dir)
 	}
@@ -386,7 +399,7 @@ func (s *Server) gitPush(w http.ResponseWriter, r *http.Request, id workspace.Re
 }
 
 func (s *Server) gitForcePreview(w http.ResponseWriter, r *http.Request, id workspace.RepoID, dir string) {
-	token, ok := s.requireToken(w)
+	token, ok := s.requireToken(w, r)
 	if !ok {
 		return
 	}
@@ -395,7 +408,7 @@ func (s *Server) gitForcePreview(w http.ResponseWriter, r *http.Request, id work
 		return
 	}
 	if err := gitx.Fetch(r.Context(), dir, s.gitAuth(token)); err != nil {
-		gitFailed(w, err)
+		s.networkGitFailed(w, r, token, err)
 		return
 	}
 	remote, erased, err := gitx.ForcePushPreview(r.Context(), dir, st.Branch)
@@ -582,7 +595,7 @@ func (s *Server) createPull(w http.ResponseWriter, r *http.Request, id workspace
 		badRequest(w, "Give the pull request a title.")
 		return
 	}
-	token, ok := s.requireToken(w)
+	token, ok := s.requireToken(w, r)
 	if !ok {
 		return
 	}
@@ -598,7 +611,7 @@ func (s *Server) createPull(w http.ResponseWriter, r *http.Request, id workspace
 	if body.Base == "" {
 		info, err := h.Repository(ctx, token, repo)
 		if err != nil {
-			hostFailed(w, err)
+			hostFailed(w, s.hostFailure(ctx, token, err))
 			return
 		}
 		body.Base = info.DefaultBranch
@@ -610,7 +623,7 @@ func (s *Server) createPull(w http.ResponseWriter, r *http.Request, id workspace
 		// For example: a pull request for this branch already exists.
 		writeError(w, http.StatusUnprocessableEntity, "pull_rejected", "GitHub did not open the pull request: "+refused.Message)
 	case err != nil:
-		hostFailed(w, err)
+		hostFailed(w, s.hostFailure(ctx, token, err))
 	default:
 		writeJSON(w, http.StatusOK, pull)
 	}

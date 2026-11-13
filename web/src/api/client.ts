@@ -49,6 +49,15 @@ export async function send(
 		);
 	}
 	const { code, message, ...extra } = error;
+	if (
+		code === "auth_required" ||
+		code === "auth_override" ||
+		code === "auth_changed"
+	) {
+		window.dispatchEvent(
+			new CustomEvent("revisions:auth-problem", { detail: { code, message } }),
+		);
+	}
 	throw new ApiError(response.status, code, message, extra);
 }
 
@@ -58,7 +67,13 @@ export async function json<T>(
 	path: string,
 	body?: unknown,
 ): Promise<T> {
-	return (await send(method, path, body)).json();
+	const answer = await (await send(method, path, body)).json();
+	if (answer?.authError) {
+		window.dispatchEvent(
+			new CustomEvent("revisions:auth-problem", { detail: answer.authError }),
+		);
+	}
+	return answer;
 }
 
 // Application routes.
@@ -127,7 +142,13 @@ export function installUpdate(): Promise<{ version: string }> {
 	return json("POST", "/api/update");
 }
 
+export interface AuthProblem {
+	code: string;
+	message: string;
+}
+
 export interface Auth {
+	problem?: AuthProblem;
 	signedIn: boolean;
 	/** Null when signed out, and when signed in while GitHub is unreachable. */
 	user: { login: string; name: string; avatarUrl: string } | null;
@@ -136,6 +157,14 @@ export interface Auth {
 
 export function getAuth(): Promise<Auth> {
 	return json("GET", "/api/auth");
+}
+
+export function reconnectGitHub(): Promise<Auth> {
+	return json("POST", "/api/auth/reconnect");
+}
+
+export async function cancelDevice(): Promise<void> {
+	await send("POST", "/api/auth/device/cancel");
 }
 
 export interface DeviceCode {

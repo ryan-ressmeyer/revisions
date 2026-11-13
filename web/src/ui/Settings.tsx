@@ -44,12 +44,14 @@ function saveAppearance(appearance: Appearance) {
 export function SettingsButton({
 	auth,
 	onSignedOut,
+	onReconnect,
 	onQuit,
 	version,
 	updateNotice,
 }: {
 	auth: Auth;
 	onSignedOut: () => void;
+	onReconnect: () => void;
 	/** Saves pending edits and stops Revisions; resolves with a reason when it would not. */
 	onQuit: () => Promise<string>;
 	/** The running version, "" until known. */
@@ -224,8 +226,19 @@ export function SettingsButton({
 							<span className="muted">
 								{auth.user
 									? `Signed in to GitHub as ${auth.user.login}`
-									: "Signed in to GitHub"}
+									: auth.signedIn
+										? "Signed in to GitHub"
+										: "GitHub is disconnected"}
 							</span>
+							<button
+								type="button"
+								onClick={() => {
+									dialog.current?.close();
+									onReconnect();
+								}}
+							>
+								Reconnect GitHub
+							</button>
 							<button type="button" className="quiet" onClick={leave}>
 								Sign out
 							</button>

@@ -222,12 +222,48 @@ func (h *Host) StartDevice(ctx context.Context) (host.DeviceCode, error) {
 	}, nil
 }
 
-func (h *Host) PollDevice(ctx context.Context, deviceCode string) (host.Poll, error) {
-	var answer struct {
-		oauthError
-		AccessToken string `json:"access_token"`
-		Interval    int    `json:"interval"`
+type tokenAnswer struct {
+	oauthError
+	AccessToken      string `json:"access_token"`
+	RefreshToken     string `json:"refresh_token"`
+	ExpiresIn        int    `json:"expires_in"`
+	RefreshExpiresIn int    `json:"refresh_token_expires_in"`
+	Interval         int    `json:"interval"`
+}
+
+func (a tokenAnswer) credential() host.Credential {
+	c := host.Credential{Token: a.AccessToken, RefreshToken: a.RefreshToken}
+	now := time.Now()
+	if a.ExpiresIn > 0 {
+		c.ExpiresAt = now.Add(time.Duration(a.ExpiresIn) * time.Second)
 	}
+	if a.RefreshExpiresIn > 0 {
+		c.RefreshExpiresAt = now.Add(time.Duration(a.RefreshExpiresIn) * time.Second)
+	}
+	return c
+}
+
+// Refresh rotates a device-flow credential without a client secret.
+func (h *Host) Refresh(ctx context.Context, refreshToken string) (host.Credential, error) {
+	if h.clientID == "" {
+		return host.Credential{}, host.ErrNotConfigured
+	}
+	var answer tokenAnswer
+	form := url.Values{"client_id": {h.clientID}, "grant_type": {"refresh_token"}, "refresh_token": {refreshToken}}
+	if err := h.oauthPost(ctx, "/login/oauth/access_token", form, &answer); err != nil {
+		return host.Credential{}, err
+	}
+	if answer.Error == "bad_refresh_token" || answer.Error == "expired_token" {
+		return host.Credential{}, host.ErrUnauthorized
+	}
+	if answer.Error != "" || answer.AccessToken == "" || answer.RefreshToken == "" {
+		return host.Credential{}, answer.err()
+	}
+	return answer.credential(), nil
+}
+
+func (h *Host) PollDevice(ctx context.Context, deviceCode string) (host.Poll, error) {
+	var answer tokenAnswer
 	form := url.Values{
 		"client_id":   {h.clientID},
 		"device_code": {deviceCode},
@@ -241,7 +277,7 @@ func (h *Host) PollDevice(ctx context.Context, deviceCode string) (host.Poll, er
 		if answer.AccessToken == "" {
 			return host.Poll{}, answer.err()
 		}
-		return host.Poll{Status: host.PollOK, Token: answer.AccessToken}, nil
+		return host.Poll{Status: host.PollOK, Credential: answer.credential()}, nil
 	case "authorization_pending":
 		return host.Poll{Status: host.PollPending}, nil
 	case "slow_down":

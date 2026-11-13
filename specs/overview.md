@@ -470,7 +470,11 @@ The local server SHALL validate the `Host` header and the request `Origin`, and 
 
 ### Requirement: GitHub sign-in
 
-Collaborators SHALL sign in with their own GitHub account through OAuth. GitHub permissions SHALL decide which operations they can perform. Sign-in SHALL use the OAuth device flow, which needs no client secret. The token SHALL be stored in the operating-system keychain when one is available [7].
+Collaborators SHALL sign in with their own GitHub account through OAuth. GitHub permissions SHALL decide which operations they can perform. Sign-in SHALL use the OAuth device flow, which needs no client secret. The complete credential SHALL be stored in the operating-system keychain when one is available [7]. Revisions SHALL retain refresh tokens and expiry times when GitHub supplies them, accept older plain-token storage, and renew expiring credentials on demand, with one renewal at a time. It SHALL NOT request `offline_access`, force expiry, or run a background keepalive [13–14].
+
+A rejected sign-in SHALL clear stale identity and permission caches and show a persistent explanation with Reconnect GitHub. Reconnect SHALL attempt renewal when possible and otherwise offer the one-time-code flow in place. An old request SHALL NOT invalidate newer credentials. Offline, server, permission, and credential-storage errors SHALL be distinguished from proven unauthorized responses; transient failures SHALL NOT discard credentials. An environment token override SHALL explain that it must be replaced or removed and Revisions restarted, rather than offer a futile sign-in [13].
+
+Home and the open project SHALL stay mounted through sign-out, auth loss, reconnect, failure, and cancellation. The pasted URL, pending or rejected text, undo history, and PR form SHALL remain accessible. The user MAY defer reconnect and continue local editing, saving, and building, including opening existing clones without GitHub. Revisions SHALL NOT persist browser drafts or replay Open, a Git mutation, or PR creation after reconnection. It SHALL refresh identity, permissions, and history after reconnect, invalidate destructive previews, and leave author settings unchanged [13].
 
 #### Scenario: Device sign-in
 
@@ -481,6 +485,41 @@ Collaborators SHALL sign in with their own GitHub account through OAuth. GitHub 
 
 - WHEN a signed-in collaborator lacks write access to the repository
 - THEN Revisions does not offer pushing to that repository's branches
+
+#### Scenario: Expiring credential
+
+- WHEN GitHub supplied an expiring access token and a usable refresh token, and an authenticated request needs renewal
+- THEN Revisions rotates and durably stores the complete pair once, validates the account, and uses the new credential without requiring a code
+
+#### Scenario: Rejected cached sign-in
+
+- WHEN GitHub rejects a token whose account was already cached
+- THEN Revisions stops reporting that cached account as signed in and explains how to reconnect, while keeping local history and status available
+
+#### Scenario: Reconnect in place
+
+- WHEN the user reconnects or cancels reconnection after auth loss
+- THEN the pasted Home URL or the project's pending or rejected text and undo history stay available, and the user explicitly retries the interrupted action
+
+#### Scenario: Rejected pull request
+
+- WHEN GitHub rejects authentication while the user submits a pull request
+- THEN reconnect keeps the PR form and does not submit it again automatically
+
+#### Scenario: Temporary GitHub failure
+
+- WHEN renewal or an authenticated request fails without a proven unauthorized response
+- THEN Revisions preserves credentials and distinguishes that failure from needing a new sign-in
+
+#### Scenario: Credential storage failure
+
+- WHEN credentials cannot be read or a rotated pair cannot be durably stored
+- THEN Revisions reports a storage failure rather than claiming successful sign-in or reusing a consumed refresh token
+
+#### Scenario: Environment credential override
+
+- WHEN an environment token overrides sign-in and the user attempts reconnect
+- THEN Revisions explains how to replace or remove the override and restart, without starting a device flow
 
 ### Requirement: Git operations
 
@@ -594,3 +633,5 @@ Redraft's OpenIrisDPI trust profile, protected objects, and separate Source View
 - [10] The owner's request of 2026-11-11, "add a quit button and fix the stats macros", made after the installed app could only be stopped on macOS by logging out, and after a real manuscript's stats macros showed as errors and raw source in the inline view.
 - [11] The owner's report against v0.1.0, 2026-11-11: a comment in the abstract of a journal template stopped the build with `Float(s) lost`, and pressing Build PDF again later reported a failure with no error, file, or line, because `latexmk` skips a step that failed before until a source changes.
 - [12] `notes/feedback-release-01.md`. Feedback on the first release and the owner's choice of the hybrid for comments where a margin note cannot go, 2026-11-12.
+- [13] Owner's approved GitHub credential renewal and in-place reconnection plan, 2026-11-13, following a warm cached sign-in whose token GitHub rejected with 401.
+- [14] GitHub OAuth App authorization, expiring access tokens and device-flow refresh: https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps#expiring-access-tokens; token expiry and revocation: https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/token-expiration-and-revocation.

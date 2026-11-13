@@ -60,6 +60,7 @@ const UNSAVED =
 
 interface Problem {
 	text: string;
+	reconnect?: boolean;
 	details?: string;
 	files?: string[];
 }
@@ -72,7 +73,11 @@ function problemOf(error: unknown): Problem {
 					typeof f === "string" ? f : `${f.path} (${statusWords[f.status]})`,
 				)
 			: undefined;
-	return { ...failure(error), files };
+	return {
+		...failure(error),
+		files,
+		reconnect: isCode(error, "auth_required"),
+	};
 }
 
 interface Log {
@@ -146,13 +151,23 @@ export function GitPanel({
 		if (filesKey) gitStatus(id).then(setStatus, () => {});
 	}, [id, filesKey]);
 
+	useEffect(() => {
+		const changed = () => {
+			// Do not reuse a destructive preview after changing accounts.
+			setDialog((d) => (d === "force" || d === "discard" ? null : d));
+			void refresh();
+		};
+		window.addEventListener("revisions:auth-changed", changed);
+		return () => window.removeEventListener("revisions:auth-changed", changed);
+	}, [refresh]);
+
 	const after = useCallback(() => {
 		refresh();
 		onChanged();
 	}, [refresh, onChanged]);
 
 	const report = (error: unknown) => {
-		if (isCode(error, "auth_required")) return onAuthLost();
+		if (isCode(error, "auth_required")) onAuthLost();
 		setProblem(problemOf(error));
 		setOffer(
 			isCode(error, "rejected")
@@ -561,6 +576,14 @@ function ProblemBox({
 					<summary>Details from Git</summary>
 					<pre>{problem.details}</pre>
 				</details>
+			)}
+			{problem.reconnect && (
+				<button
+					type="button"
+					onClick={() => window.dispatchEvent(new Event("revisions:reconnect"))}
+				>
+					Reconnect GitHub
+				</button>
 			)}
 			{children && <div className="row">{children}</div>}
 		</div>
@@ -1185,7 +1208,7 @@ function PullDialog({
 	const [busy, setBusy] = useState(false);
 
 	const fail = (error: unknown) => {
-		if (isCode(error, "auth_required")) return onAuthLost();
+		if (isCode(error, "auth_required")) onAuthLost();
 		setProblem(problemOf(error));
 		setNeedsSend(isCode(error, "not_pushed"));
 	};
@@ -1327,7 +1350,8 @@ function ForcePushDialog({
 	const fail = useCallback(
 		(error: unknown) => {
 			if (isCode(error, "auth_required")) onAuthLost();
-			else setProblem(problemOf(error));
+			setProblem(problemOf(error));
+			setPreview(null);
 		},
 		[onAuthLost],
 	);
@@ -1371,6 +1395,13 @@ function ForcePushDialog({
 			onClose={onClose}
 		>
 			{problem && <ProblemBox problem={problem} />}
+			{!preview && (
+				<div className="row end">
+					<button type="button" onClick={onClose}>
+						Cancel
+					</button>
+				</div>
+			)}
 			{!preview ? (
 				!problem && (
 					<p className="muted">

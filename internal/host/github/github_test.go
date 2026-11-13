@@ -3,12 +3,15 @@ package github
 import (
 	"encoding/base64"
 	"errors"
+	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ryan-ressmeyer/revisions/internal/host"
 	"github.com/ryan-ressmeyer/revisions/internal/host/githubfake"
@@ -102,6 +105,44 @@ func TestDeviceFlow(t *testing.T) {
 	fake.SetDevice("slow_down")
 	if poll, err := h.PollDevice(ctx, code.DeviceCode); err != nil || poll.Status != host.PollPending || poll.Interval <= 0 {
 		t.Errorf("slow_down: %+v, %v", poll, err)
+	}
+}
+
+func TestExpiringDeviceCredentialAndRefresh(t *testing.T) {
+	h, _ := newHost(t)
+	bad := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.ParseForm()
+		if r.Form.Has("client_secret") || strings.Contains(r.Form.Get("scope"), "offline_access") {
+			t.Error("requested extra credentials or scope")
+		}
+		if r.Form.Get("grant_type") == "refresh_token" {
+			if r.Form.Get("refresh_token") != "refresh-a" {
+				t.Error("missing refresh token")
+			}
+			if bad {
+				fmt.Fprint(w, `{"error":"bad_refresh_token"}`)
+				return
+			}
+			fmt.Fprint(w, `{"access_token":"access-b","refresh_token":"refresh-b","expires_in":28800,"refresh_token_expires_in":15000000}`)
+			return
+		}
+		fmt.Fprint(w, `{"access_token":"access-a","refresh_token":"refresh-a","expires_in":28800,"refresh_token_expires_in":15000000}`)
+	}))
+	defer srv.Close()
+	h.oauth = srv.URL
+	before := time.Now()
+	poll, err := h.PollDevice(t.Context(), "device")
+	if err != nil || poll.Token != "access-a" || poll.RefreshToken != "refresh-a" || poll.ExpiresAt.Before(before.Add(28799*time.Second)) || poll.RefreshExpiresAt.Before(before.Add(14999999*time.Second)) {
+		t.Fatalf("device metadata lost: %+v, %v", poll, err)
+	}
+	credential, err := h.Refresh(t.Context(), poll.RefreshToken)
+	if err != nil || credential.Token != "access-b" || credential.RefreshToken != "refresh-b" {
+		t.Fatalf("rotation: %+v, %v", credential, err)
+	}
+	bad = true
+	if _, err := h.Refresh(t.Context(), "refresh-a"); !errors.Is(err, host.ErrUnauthorized) {
+		t.Fatalf("bad refresh: %v", err)
 	}
 }
 

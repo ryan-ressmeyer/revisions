@@ -110,7 +110,7 @@ export function ProjectView({
 	/** Where the app finds this view's save of pending edits before quitting. */
 	saveBeforeQuit: RefObject<() => Promise<boolean>>;
 	onEnvChange: (env: Env) => void;
-	/** GitHub answered auth_required: the app shows sign-in. */
+	/** GitHub rejected the sign-in: refresh the connection notice in place. */
 	onAuthLost: () => void;
 }) {
 	const [project, setProject] = useState<Project | null>(null);

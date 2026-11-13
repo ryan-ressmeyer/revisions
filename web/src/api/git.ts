@@ -1,6 +1,6 @@
 // The Git and pull-request routes under R of the contract in
 // specs/architecture.md. Every POST under git/ answers with the new status.
-import { json, type RepoId } from "./client";
+import { type AuthProblem, json, type RepoId } from "./client";
 
 const R = (id: RepoId) => `/api/repos/${id}`;
 
@@ -16,6 +16,8 @@ export interface FileStatus {
 }
 
 export interface GitStatus {
+	/** Failed optional GitHub lookup; local status remains usable. */
+	authError?: AuthProblem;
 	branch: string | null;
 	head: string;
 	upstream: string | null;
@@ -79,7 +81,11 @@ export async function gitDiff(id: RepoId, path?: string): Promise<string> {
 export function gitLog(
 	id: RepoId,
 	limit = 200,
-): Promise<{ commits: Commit[]; pulls: PullRequest[] }> {
+): Promise<{
+	commits: Commit[];
+	pulls: PullRequest[];
+	authError: AuthProblem | null;
+}> {
 	return json("GET", `${R(id)}/git/log?limit=${limit}`);
 }
 

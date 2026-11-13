@@ -337,9 +337,9 @@ func TestOpenNeedsSignInAndAGoodURL(t *testing.T) {
 	wantError(t, h.call(t, "POST", "/api/open", map[string]string{"url": repoURL + "/commit/0123456789abcdef0123456789abcdef01234567"}), 404, "not_found")
 	wantError(t, h.call(t, "POST", "/api/open", map[string]string{"url": repoURL + "/pull/9"}), 404, "not_found")
 
-	// A token GitHub no longer accepts asks for a new sign-in.
+	// An environment override cannot be repaired by device sign-in.
 	t.Setenv("REVISIONS_GITHUB_TOKEN", "revoked")
-	wantError(t, h.call(t, "POST", "/api/open", map[string]string{"url": repoURL}), 401, "auth_required")
+	wantError(t, h.call(t, "POST", "/api/open", map[string]string{"url": repoURL}), 409, "auth_override")
 }
 
 // Scenario: First open.

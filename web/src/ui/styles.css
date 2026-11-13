@@ -353,6 +353,20 @@ textarea:focus-visible {
 	margin-bottom: 0.4rem;
 }
 
+.auth-notice {
+	position: fixed;
+	bottom: 1rem;
+	left: 50%;
+	transform: translateX(-50%);
+	z-index: 30;
+	width: min(42rem, calc(100% - 2rem));
+	padding: 1rem;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--surface);
+	box-shadow: 0 2px 12px #0003;
+}
+
 .signin .steps {
 	margin-top: 1.5rem;
 }

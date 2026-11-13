@@ -51,7 +51,7 @@ export function Home({
 		} catch (error) {
 			setOpening(false);
 			if (isCode(error, "git_missing")) return onGitMissing();
-			if (isCode(error, "auth_required")) return onSignedOut();
+			if (isCode(error, "auth_required")) onSignedOut();
 			if (error instanceof ApiError && error.code === "dirty") {
 				setFailure({
 					kind: "dirty",

@@ -7,7 +7,8 @@ const plain: Record<string, string> = {
 		"That is not a link to a manuscript on GitHub. Copy the whole link your co-author sent, starting with https://github.com/, and try again.",
 	not_found:
 		"GitHub does not show that manuscript to your account. Check the link, and ask your co-author to give your GitHub account access.",
-	auth_required: "Sign in with GitHub again to continue.",
+	auth_required:
+		"GitHub is disconnected. Reconnect GitHub, then retry your action. Local editing, saving, and builds still work.",
 	bad_token: "This page is out of date. Reload the page to continue.",
 	host_unreachable:
 		"Could not reach GitHub. Check your internet connection and try again.",

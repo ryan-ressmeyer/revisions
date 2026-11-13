@@ -6,6 +6,7 @@ package host
 import (
 	"context"
 	"errors"
+	"time"
 )
 
 var (
@@ -61,12 +62,20 @@ const (
 	PollDenied  = "denied"
 )
 
+// Credential stays server-side, including optional OAuth renewal metadata.
+type Credential struct {
+	Token            string    `json:"token"`
+	RefreshToken     string    `json:"refreshToken,omitempty"`
+	ExpiresAt        time.Time `json:"expiresAt,omitzero"`
+	RefreshExpiresAt time.Time `json:"refreshExpiresAt,omitzero"`
+}
+
 // Poll is one answer to "has the user entered the code yet?". Token is set
 // when Status is PollOK. Interval is non-zero when the host asks for slower
 // polling.
 type Poll struct {
-	Status   string
-	Token    string
+	Status string
+	Credential
 	Interval int
 }
 
@@ -110,6 +119,7 @@ type Host interface {
 	// when no OAuth client ID is set.
 	StartDevice(ctx context.Context) (DeviceCode, error)
 	PollDevice(ctx context.Context, deviceCode string) (Poll, error)
+	Refresh(ctx context.Context, refreshToken string) (Credential, error)
 
 	User(ctx context.Context, token string) (User, error)
 	Repository(ctx context.Context, token string, repo Repo) (RepoInfo, error)

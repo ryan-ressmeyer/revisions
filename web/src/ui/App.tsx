@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
 	ApiError,
 	type Auth,
+	type AuthProblem,
+	cancelDevice,
 	type Env,
 	getAuth,
 	getEnv,
@@ -13,6 +15,7 @@ import {
 	type UpdateInfo,
 } from "../api/client";
 import { explain } from "./errors";
+import { Modal } from "./Git";
 import { GitGuidance } from "./Guidance";
 import { Home } from "./Home";
 import { ProjectView } from "./Project";
@@ -34,6 +37,8 @@ export function App() {
 	const [env, setEnv] = useState<Env | null>(null);
 	const [auth, setAuth] = useState<Auth | null>(null);
 	const [failure, setFailure] = useState("");
+	const [authProblem, setAuthProblem] = useState<AuthProblem | null>(null);
+	const [reconnecting, setReconnecting] = useState(false);
 	const [stopped, setStopped] = useState(false);
 	const route = useRoute();
 	// The open project's save of pending edits; false when it failed.
@@ -41,10 +46,21 @@ export function App() {
 
 	const check = useCallback(async () => {
 		try {
-			const [e, a] = await Promise.all([getEnv(), getAuth()]);
-			setEnv(e);
-			setAuth(a);
+			setEnv(await getEnv());
 			setFailure("");
+			try {
+				const a = await getAuth();
+				setAuth(a);
+				if (a.problem) setAuthProblem(a.problem);
+			} catch (error) {
+				setAuth(
+					(a) => a ?? { signedIn: false, user: null, suggestedAuthorId: "" },
+				);
+				setAuthProblem({
+					code: error instanceof ApiError ? error.code : "host_unreachable",
+					message: explain(error),
+				});
+			}
 		} catch (error) {
 			setFailure(explain(error));
 		}
@@ -52,6 +68,37 @@ export function App() {
 	useEffect(() => {
 		check();
 	}, [check]);
+
+	useEffect(() => {
+		const problem = (event: Event) => {
+			const detail = (event as CustomEvent<AuthProblem>).detail;
+			setAuthProblem(detail);
+			void check().then(() => {
+				if (detail.code === "auth_changed")
+					window.dispatchEvent(new Event("revisions:auth-changed"));
+			});
+		};
+		const reconnect = () => setReconnecting(true);
+		window.addEventListener("revisions:auth-problem", problem);
+		window.addEventListener("revisions:reconnect", reconnect);
+		return () => {
+			window.removeEventListener("revisions:auth-problem", problem);
+			window.removeEventListener("revisions:reconnect", reconnect);
+		};
+	}, [check]);
+
+	const recovered = useCallback(async () => {
+		setAuthProblem(null);
+		setReconnecting(false);
+		await check();
+		window.dispatchEvent(new Event("revisions:auth-changed"));
+	}, [check]);
+	const cancelled = useCallback(() => {
+		setReconnecting(false);
+		void cancelDevice().catch((error) =>
+			setAuthProblem({ code: "storage_failed", message: explain(error) }),
+		);
+	}, []);
 
 	// The server looks for a newer release in the background; this asks it
 	// what it found, often enough to see the answer soon after a start.
@@ -136,7 +183,7 @@ export function App() {
 			/>
 		);
 	}
-	if (failure) {
+	if (failure && !env) {
 		return (
 			<main className="center">
 				<section className="card">
@@ -159,7 +206,6 @@ export function App() {
 	if (!env.git.found) {
 		return <GitGuidance platform={env.platform} onCheck={check} />;
 	}
-	if (!auth.signedIn) return <SignIn onSignedIn={check} />;
 
 	const notice = update && (
 		<UpdateNotice update={update} onUpdate={updateApp} />
@@ -167,37 +213,69 @@ export function App() {
 	const settings = (
 		<SettingsButton
 			auth={auth}
-			onSignedOut={check}
+			onSignedOut={recovered}
+			onReconnect={() => setReconnecting(true)}
 			onQuit={quitApp}
 			version={update?.version ?? ""}
 			updateNotice={notice}
 		/>
 	);
-	if (route.name === "repo") {
-		return (
-			<ProjectView
-				key={route.id}
-				id={route.id}
-				env={env}
-				settings={settings}
-				updateNotice={notice}
-				saveBeforeQuit={saveBeforeQuit}
-				onEnvChange={setEnv}
-				onAuthLost={check}
-			/>
-		);
-	}
 	return (
-		<div className="page">
-			<header className="topbar">
-				<a className="brand" href="#/">
-					Revisions
-				</a>
-				<span className="spacer" />
-				{settings}
-			</header>
-			{notice}
-			<Home onGitMissing={check} onSignedOut={check} />
-		</div>
+		<>
+			{route.name === "repo" ? (
+				<ProjectView
+					key={route.id}
+					id={route.id}
+					env={env}
+					settings={settings}
+					updateNotice={notice}
+					saveBeforeQuit={saveBeforeQuit}
+					onEnvChange={setEnv}
+					onAuthLost={check}
+				/>
+			) : (
+				<div className="page">
+					<header className="topbar">
+						<a className="brand" href="#/">
+							Revisions
+						</a>
+						<span className="spacer" />
+						{settings}
+					</header>
+					{notice}
+					<Home onGitMissing={check} onSignedOut={check} />
+				</div>
+			)}
+			{(authProblem || !auth.signedIn || failure) && (
+				<aside className="auth-notice" aria-label="GitHub connection">
+					<p role="status">
+						{failure ||
+							authProblem?.message ||
+							"Sign in to GitHub to open shared links and send changes. Copies on this computer still work without sign-in."}
+					</p>
+					{authProblem?.code === "auth_changed" ? (
+						<button type="button" onClick={() => setAuthProblem(null)}>
+							Dismiss
+						</button>
+					) : (
+						authProblem?.code !== "auth_override" && (
+							<button type="button" onClick={() => setReconnecting(true)}>
+								{authProblem ? "Reconnect GitHub" : "Sign in with GitHub"}
+							</button>
+						)
+					)}
+				</aside>
+			)}
+			{reconnecting && (
+				<Modal title="Reconnect GitHub" onClose={cancelled}>
+					<SignIn onSignedIn={recovered} />
+					<div className="row end">
+						<button type="button" onClick={cancelled}>
+							Not now
+						</button>
+					</div>
+				</Modal>
+			)}
+		</>
 	);
 }
