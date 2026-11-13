@@ -42,6 +42,15 @@ The installer puts Revisions in the Applications folder inside your home folder.
 
 MacTeX's own page says installation takes about ten minutes on a recent Mac. If the installer reports a failure near the end, the [MacTeX download page](https://tug.org/mactex/mactex-download.html) explains the fix.
 
+**On macOS 27 or later, update MacTeX before you build a PDF.** The Apple menu's **About This Mac** shows which version you have. Paste each of these two lines into Terminal and press Return after each. Terminal asks for your Mac password and shows nothing while you type it.
+
+```sh
+sudo /Library/TeX/texbin/tlmgr update --self
+sudo /Library/TeX/texbin/tlmgr update --all
+```
+
+The MacTeX installer carries a copy of Biber, the program that builds the bibliography, that does not start on macOS 27. The update replaces it. The second line downloads every package that has changed since the installer was made, so it can take a while.
+
 ## 4. Open Revisions
 
 Press Command-Space, type `Revisions`, and press Return. Your browser opens a Revisions tab.
@@ -79,3 +88,4 @@ Version 0.1.0 has no Update button. To update from it, run the line from step 2 
 - **"Revisions was not installed: …"** The line after the colon says why. Nothing was changed, and you can run the line again.
 - **macOS says Revisions "cannot be opened" or "is damaged".** This should not happen with the installer above, which downloads in a way macOS does not block. If it does, open **System Settings > Privacy & Security**, scroll down, click **Open Anyway** next to the message about Revisions, and confirm with **Open**.
 - **Revisions asks you to install Git or LaTeX.** Finish steps 2 and 3, then click **Check again**.
+- **The PDF build fails and its log says `extracting arm64 binary with lipo failed`.** On an Intel Mac the log says `x86_64` where this says `arm64`. MacTeX needs the update at the end of step 3. Run the two lines there, then click **Build PDF** again.
