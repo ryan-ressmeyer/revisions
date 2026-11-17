@@ -440,8 +440,8 @@ export function GitPanel({
 								<span>
 									Branch <b>{f.name}</b> is finished. Its GitHub branch was
 									removed, and everything on it is kept on GitHub
-									{f.pull > 0 ? `, kept in pull request #${f.pull}` : ""}.
-									Removing it here changes nothing on GitHub.
+									{f.pull > 0 ? `, in pull request #${f.pull}` : ""}. Removing
+									it here changes nothing on GitHub.
 									{current &&
 										(status.defaultBranch
 											? ` You are on it, so Remove first switches to branch ${status.defaultBranch}.`

@@ -1346,7 +1346,9 @@ test("Finished after a squash merge", async ({ page, github, server }) => {
 		.getByRole("listitem")
 		.filter({ hasText: "feature" });
 	await expect(item).toContainText("kept on GitHub");
-	await expect(item).toContainText(`kept in pull request #${number}`);
+	await expect(item).toContainText(
+		`kept on GitHub, in pull request #${number}`,
+	);
 	// Listed, not removed: removal waits for the click.
 	await page.waitForTimeout(500);
 	expect(hasBranch(server.paper, "feature")).toBe(true);
