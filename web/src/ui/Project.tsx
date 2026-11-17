@@ -27,6 +27,7 @@ import {
 	gitFetch,
 	gitRunning,
 	gitStatus,
+	onGitHubReached,
 	type Snapshot,
 } from "../api/git";
 import {
@@ -701,6 +702,13 @@ export function ProjectView({
 			return false;
 		}
 	}, []);
+	// Saves before a move. A snapshot refuses every save, and the refused
+	// text stays in the collision banner for copying, so on a snapshot a
+	// failed save does not block the move.
+	const flushMove = useCallback(
+		async () => (await flushOpen()) || snapshotHead !== "",
+		[flushOpen, snapshotHead],
+	);
 	useEffect(() => {
 		saveBeforeQuit.current = flushOpen;
 		return () => {
@@ -740,11 +748,18 @@ export function ProjectView({
 		reached: null,
 		unreachable: false,
 	});
+	// Get latest and Send reach GitHub too, so they count as a check.
+	useEffect(
+		() =>
+			onGitHubReached(() =>
+				setGithub({ reached: new Date().toISOString(), unreachable: false }),
+			),
+		[],
+	);
 	const checkGitHub = useCallback(async () => {
 		if (!signedIn || gitRunning()) return;
 		try {
 			await gitFetch(id);
-			setGithub({ reached: new Date().toISOString(), unreachable: false });
 		} catch (error) {
 			if (isCode(error, "host_unreachable"))
 				setGithub((g) => ({ ...g, unreachable: true }));
@@ -934,7 +949,7 @@ export function ProjectView({
 					id={id}
 					head={snapshotHead}
 					snapshot={snapshot}
-					flush={flushOpen}
+					flush={flushMove}
 					onDone={afterGit}
 					onClose={() => setVersionOpen(false)}
 					onAuthLost={onAuthLost}
@@ -1114,7 +1129,7 @@ export function ProjectView({
 									id={id}
 									state={repoState}
 									github={github}
-									flush={flushOpen}
+									flush={flushMove}
 									onChanged={afterGit}
 									onOpenSource={openSource}
 									onAuthLost={onAuthLost}
@@ -1418,9 +1433,12 @@ function FileBanners({ sync }: { sync: FileSync }) {
 		return (
 			<div role="alert" className="banner danger">
 				<p>
-					<b>Your latest changes were not saved.</b> This file was changed on
-					disk by something else while you were editing. Copy your text below if
-					you need it, then reload the file to see what is on disk.
+					<b>Your latest changes were not saved.</b>{" "}
+					{state.error
+						? "They reached an earlier version, which cannot be changed. They are not saved anywhere."
+						: "This file was changed on disk by something else while you were editing."}{" "}
+					Copy your text below if you need it, then reload the file to see what
+					is on disk.
 				</p>
 				<textarea
 					readOnly

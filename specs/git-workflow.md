@@ -43,7 +43,7 @@ Three gaps in the released workflow shape this spec:
 
 ### The move prompt
 
-Before a move, Revisions saves pending editor text. If the save fails, nothing else happens. If the working copy is clean, the move runs. Otherwise the prompt names the destination, lists the changed files, and offers:
+Before a move, Revisions saves pending editor text. If the save fails, nothing else happens, with one exception: a snapshot refuses every save, so text it refused does not block a move from it. That text stays shown for copying, with Reload, and is saved nowhere, not even on the version the move reaches [1]. If the working copy is clean, the move runs. Otherwise the prompt names the destination, lists the changed files, and offers:
 
 - **Commit.** The ordinary commit form, with a required description that is never prefilled. Revisions commits every change on the current branch, then moves.
 - **Discard.** The existing discard confirmation with its diff. After confirmation, Revisions discards, then moves.
@@ -82,7 +82,7 @@ Two cases are not detected and stay with manual deletion: a merged pull request 
 
 The page fetches when a project opens, when Changes & history opens, and every 5 minutes while a project is open. The interval is fixed. A check is skipped while another Git operation runs, and when signed out. A check only fetches: it never changes the working copy or the current branch.
 
-The panel shows the number of commits waiting on GitHub for the current branch and when GitHub was last reached. When a check cannot reach GitHub, the panel says that GitHub could not be reached since that time, so the copy may be out of date. A rejected sign-in during a check shows the existing reconnect explanation. Neither failure blocks editing, committing, or building.
+The panel shows the number of commits waiting on GitHub for the current branch and when GitHub was last reached, by a check, Get latest, or Send. When a check cannot reach GitHub, the panel says that GitHub could not be reached since that time, so the copy may be out of date. A rejected sign-in during a check shows the existing reconnect explanation. Neither failure blocks editing, committing, or building.
 
 A check is an ordinary authenticated request, so it renews an expiring credential the same way any request does. It is not a keepalive.
 
@@ -128,7 +128,7 @@ Revisions SHALL accept a GitHub commit, branch, or pull-request URL and bring a 
 
 ### Requirement: Uncommitted work before a move
 
-Before a move, Revisions SHALL save pending editor text and SHALL do nothing more if that fails. With uncommitted changes, it SHALL show one prompt that names the destination, lists the changed files, and offers Commit, Discard, and Cancel. It SHALL complete the move only after the chosen commit or confirmed discard succeeds. Commit SHALL require a description and SHALL NOT prefill one. Commit SHALL NOT be offered on a snapshot. During an unfinished merge, Revisions SHALL refuse the move without a prompt. When the commit or discard succeeds and the move fails, Revisions SHALL report both outcomes, stay where it is, and SHALL NOT retry on its own. Any uncommitted change SHALL block a move, including changes Git would carry across [1, Q2, Q7].
+Before a move, Revisions SHALL save pending editor text and SHALL do nothing more if that fails, except that text refused on a snapshot SHALL NOT block a move from it and SHALL stay shown for copying without being saved anywhere. With uncommitted changes, it SHALL show one prompt that names the destination, lists the changed files, and offers Commit, Discard, and Cancel. It SHALL complete the move only after the chosen commit or confirmed discard succeeds. Commit SHALL require a description and SHALL NOT prefill one. Commit SHALL NOT be offered on a snapshot. During an unfinished merge, Revisions SHALL refuse the move without a prompt. When the commit or discard succeeds and the move fails, Revisions SHALL report both outcomes, stay where it is, and SHALL NOT retry on its own. Any uncommitted change SHALL block a move, including changes Git would carry across [1, Q2, Q7].
 
 #### Scenario: Dirty clone
 
@@ -159,6 +159,11 @@ Before a move, Revisions SHALL save pending editor text and SHALL do nothing mor
 
 - WHEN the commit in the prompt succeeds and the move then fails
 - THEN Revisions says that the work was committed and that the move did not happen, with the reason, stays on the current version, and does not retry
+
+#### Scenario: Refused text on a snapshot
+
+- WHEN a snapshot refused a save of the user's text and the user chooses Return
+- THEN Revisions returns to the branch, keeps the refused text shown for copying, and saves it nowhere
 
 #### Scenario: Unfinished merge
 

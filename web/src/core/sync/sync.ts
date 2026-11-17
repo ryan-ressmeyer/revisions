@@ -41,7 +41,10 @@ export interface SyncState {
 	 * changes, the UI replaces the editor document with `text`.
 	 */
 	readonly loadCount: number;
-	/** The failure message while `status` is `error`, otherwise null. */
+	/**
+	 * The failure message while `status` is `error`, and the server's reason
+	 * during a `collision` from a save refused on a snapshot; otherwise null.
+	 */
 	readonly error: string | null;
 }
 
@@ -98,8 +101,11 @@ export function reduce(state: SyncState, event: SyncEvent): SyncState {
 				status: state.dirty ? "unsaved" : "saved",
 			};
 		case "saveFailed": {
+			// A snapshot refuses every save, so its refused text is kept for
+			// copying like a collision, and never carried to the next version.
+			const detached = event.code === "detached";
 			const status =
-				event.code === "stale"
+				event.code === "stale" || detached
 					? "collision"
 					: event.code === "not_utf8"
 						? "read-only"
@@ -108,7 +114,7 @@ export function reduce(state: SyncState, event: SyncEvent): SyncState {
 				...state,
 				status,
 				dirty: true,
-				error: status === "error" ? event.message : null,
+				error: status === "error" || detached ? event.message : null,
 			};
 		}
 		case "loaded":

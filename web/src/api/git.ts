@@ -8,9 +8,26 @@ let running = 0;
 /** True while this page waits on a Git operation, a fetch included. */
 export const gitRunning = () => running > 0;
 
-function op<T>(method: string, path: string, body?: unknown): Promise<T> {
+const reachedListeners = new Set<() => void>();
+/** Calls `fn` whenever a fetch, Get latest, or push reaches GitHub. Returns
+ * the unsubscribe function. */
+export function onGitHubReached(fn: () => void): () => void {
+	reachedListeners.add(fn);
+	return () => {
+		reachedListeners.delete(fn);
+	};
+}
+
+async function op<T>(method: string, path: string, body?: unknown): Promise<T> {
 	running++;
-	return json<T>(method, path, body).finally(() => running--);
+	try {
+		const result = await json<T>(method, path, body);
+		if (/\/git\/(fetch|pull|push|force-push(\/preview)?)$/.test(path))
+			for (const fn of reachedListeners) fn();
+		return result;
+	} finally {
+		running--;
+	}
 }
 
 export interface FileStatus {

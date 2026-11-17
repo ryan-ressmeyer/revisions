@@ -215,6 +215,32 @@ test("Collision: a stale save keeps the rejected text and stops autosave until r
 	expect(disk.text).toBe("a theirs and mine");
 });
 
+test("Refused text on a snapshot: a save refused as detached is kept for copying and never retried", async () => {
+	const { disk, sync } = open("a");
+	disk.failure = Object.assign(new Error("earlier version"), {
+		code: "detached",
+		message: "This is an earlier version of the manuscript.",
+	});
+	sync.edit("a mine");
+	await advance(1000);
+	expect(sync.getState()).toMatchObject({
+		status: "collision",
+		text: "a mine",
+		error: "This is an earlier version of the manuscript.",
+	});
+
+	// Back on a branch, nothing carries the refused text onto it.
+	disk.failure = null;
+	sync.edit("a mine more");
+	await advance(5000);
+	await expect(sync.flush()).rejects.toThrow();
+	expect(disk.saves).toEqual(["a mine"]);
+	expect(disk.text).toBe("a");
+
+	await sync.reload();
+	expect(sync.getState()).toMatchObject({ status: "saved", text: "a" });
+});
+
 test("an edit made while a silent reload is in flight is not overwritten", async () => {
 	const { disk, sync } = open("a");
 	disk.text = "theirs";

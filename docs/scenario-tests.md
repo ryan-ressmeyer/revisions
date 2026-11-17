@@ -213,6 +213,7 @@ Requirements from here on are in `specs/git-workflow.md`.
 | Discard and move | `web/e2e/git.spec.ts: "Discard and move: Discard in the prompt shows the diff, discards after the confirm, then switches branch"` |
 | Cancel | `web/e2e/git.spec.ts: "Cancel: nothing is committed, discarded, or moved"` |
 | Move fails after a commit | `web/e2e/git.spec.ts: "Move fails after a commit: the prompt says the work was committed and Get latest did not happen, and does not retry"` |
+| Refused text on a snapshot | `web/src/core/sync/sync.test.ts: "Refused text on a snapshot: a save refused as detached is kept for copying and never retried"`; `web/e2e/git.spec.ts: "Refused text on a snapshot: Return goes ahead, and the refused text stays shown for copying, saved nowhere"` |
 | Unfinished merge | `web/e2e/git.spec.ts: "Unfinished merge: a move is refused without a prompt until the merge is finished or undone"` |
 
 ## View an earlier version

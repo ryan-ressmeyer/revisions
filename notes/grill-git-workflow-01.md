@@ -40,6 +40,7 @@ The user asked for this session after reporting a large yellow read-only banner 
   2. Leaving a project saves its pending text first.
   3. Escape cannot close a dialog while its action is running.
 - Accepted behaviour: text typed in one window while another window switches branch lands on the new branch as a visible uncommitted change. This matches how Git carries uncommitted edits across a switch (Q14).
+- Decided during implementation (Q16): text a snapshot refused does not block Return or another move from the snapshot. It stays shown for copying, with Reload, and is saved nowhere.
 
 ### Proposals accepted with the plan
 The agent proposed these during the interview. The user did not object to them and approved the plan that listed them.
@@ -138,6 +139,9 @@ Questions are condensed from the session. Answers are reproduced verbatim.
 
 **Q15. The read-only indicator: (a) the header text becomes it, (b) a slim strip above the editor, or (c) build both and compare?**
 > Yes, let's go with a)
+
+**Q16 (implementation, 2026-11-17). Saving before a move blocks Return when a snapshot has refused the editor's text, which leaves the user on the snapshot until they copy the text and reload. Keep that, or let refused text not block Return?**
+> I'd rather not have refused text block return.
 
 **Plan approval.**
 > I'd advocate for actually just removing the experiment. There's no purpose keeping it since this supercedes. Otherwise this looks good.

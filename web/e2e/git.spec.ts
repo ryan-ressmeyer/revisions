@@ -571,6 +571,12 @@ test("GitHub unreachable: the panel says when GitHub was last reached, and editi
 	await expect(page.locator('[data-page="1"] canvas')).toHaveCount(1, {
 		timeout: 60_000,
 	});
+
+	// Get latest reaches GitHub too, so the message clears.
+	renameSync(`${bare(github)}.away`, bare(github));
+	await p.getByRole("button", { name: /Get latest/ }).click();
+	await expect(p.getByText("Checked GitHub just now")).toBeVisible();
+	await expect(p.getByText(/GitHub could not be reached/)).toHaveCount(0);
 });
 
 test("Branch: create a branch and switch to it", async ({ page, server }) => {
@@ -799,6 +805,52 @@ test("Back to the branch: with uncommitted changes on a snapshot, Return shows t
 	await expect(topbar(page).getByText("on branch main")).toBeVisible();
 	expect(git(server.paper, "branch", "--show-current")).toBe("main");
 	expect(git(server.paper, "status", "--porcelain")).toBe("");
+});
+
+test("Refused text on a snapshot: Return goes ahead, and the refused text stays shown for copying, saved nowhere", async ({
+	page,
+	server,
+}) => {
+	await open(page);
+	await openPanel(page);
+	await retitle(page, "A Later Title");
+	await commit(page, "Later title");
+	const later = onDisk(server);
+	// The clone becomes a snapshot before the autosave, as from another window.
+	await editor(page).click();
+	await page.keyboard.press("Control+Home");
+	await page.keyboard.type("% typed as it moved\n");
+	git(server.paper, "switch", "--quiet", "--detach", "HEAD~1");
+	const first = onDisk(server);
+	const refused = page
+		.getByRole("alert")
+		.filter({ hasText: "earlier version" });
+	await expect(refused.getByLabel("Your unsaved text")).toHaveValue(
+		/^% typed as it moved\n/,
+	);
+	await expect(readOnly(page)).toBeVisible();
+
+	await returnTo(page, "main");
+	await expect(versionDialog(page)).toBeHidden();
+	await expect(topbar(page).getByText("on branch main")).toBeVisible();
+	expect(git(server.paper, "branch", "--show-current")).toBe("main");
+	await expect(refused.getByLabel("Your unsaved text")).toHaveValue(
+		/^% typed as it moved\n/,
+	);
+	// Saved nowhere: not on the snapshot, not on the branch, even after more typing.
+	expect(first).not.toContain("% typed as it moved");
+	await page.keyboard.type("x");
+	await page.waitForTimeout(1500);
+	expect(onDisk(server)).toBe(later);
+	expect(git(server.paper, "status", "--porcelain")).toBe("");
+
+	await refused.getByRole("button", { name: "Reload" }).click();
+	await expect(refused).toBeHidden();
+	await expect
+		.poll(() => editorText(page))
+		.not.toContain("% typed as it moved");
+	await typeAtStart(page, "% editable again\n");
+	expect(onDisk(server)).toContain("% editable again");
 });
 
 test("Branch from an earlier version: Start a branch here asks for a name, the branch starts at that commit, and the editor accepts edits", async ({
