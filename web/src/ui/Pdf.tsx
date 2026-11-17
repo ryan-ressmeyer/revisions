@@ -117,23 +117,30 @@ export function PdfView({
 		el.scrollTop = (middle * scale) / before - el.clientHeight / 2;
 	}, [scale]);
 
+	// A box to scroll to once the view has its width and the page exists: a
+	// pane that was hidden lays out, and its pages take their size, a few
+	// renders after it is shown.
+	const pending = useRef<PdfBox | null>(null);
+	useLayoutEffect(() => {
+		const el = scroller.current;
+		const box = pending.current;
+		const page = el?.querySelector<HTMLElement>(`[data-page="${box?.page}"]`);
+		if (!el || !box || !page || width === 0) return;
+		pending.current = null;
+		el.scrollTo({
+			top: page.offsetTop + box.y * scale - el.clientHeight / 3,
+			behavior: "smooth",
+		});
+	});
 	useImperativeHandle(
 		ref,
 		() => ({
 			show(box) {
-				const el = scroller.current;
-				const page = el?.querySelector<HTMLElement>(
-					`[data-page="${box.page}"]`,
-				);
-				if (!el || !page) return;
-				el.scrollTo({
-					top: page.offsetTop + box.y * scale - el.clientHeight / 3,
-					behavior: "smooth",
-				});
+				pending.current = box;
 				setFlash((f) => ({ box, n: (f?.n ?? 0) + 1 }));
 			},
 		}),
-		[scale],
+		[],
 	);
 
 	return (

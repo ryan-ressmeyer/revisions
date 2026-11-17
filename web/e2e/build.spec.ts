@@ -142,10 +142,14 @@ test.describe("with a built PDF", () => {
 		await show("Editor").click();
 		await expect(page.getByRole("region", { name: "PDF" })).toBeHidden();
 		await source(page).click();
+		// A slow machine: the pane takes longer than a frame or two to lay out.
+		const cdp = await page.context().newCDPSession(page);
+		await cdp.send("Emulation.setCPUThrottlingRate", { rate: 20 });
 		await page.keyboard.press("Control+j");
 		const mark = page.locator(".pdf-highlight");
 		await expect(page.getByRole("region", { name: "PDF" })).toBeVisible();
 		await expect(mark).toBeInViewport();
+		await cdp.send("Emulation.setCPUThrottlingRate", { rate: 1 });
 		await expect(show("Both")).toHaveAttribute("aria-pressed", "true");
 	});
 

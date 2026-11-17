@@ -633,13 +633,8 @@ export function ProjectView({
 				line.number,
 				head - line.from,
 			);
-			if (panesRef.current === "editor") {
-				setPanes("both");
-				// ponytail: two frames for the pane to lay out and the pages to
-				// take their new size before scrolling. Await a PdfView "ready"
-				// signal instead if a slow machine misses the spot.
-				await frames(2);
-			}
+			// The PDF view scrolls once a hidden pane has laid out.
+			if (panesRef.current === "editor") setPanes("both");
 			pdf.current?.show(box);
 		} catch (error) {
 			setNotice(
@@ -1823,11 +1818,6 @@ function useStored<T extends string>(
 	}, [key, value]);
 	return [value, setValue] as const;
 }
-
-const frames = async (n: number) => {
-	for (let i = 0; i < n; i++)
-		await new Promise((r) => requestAnimationFrame(r));
-};
 
 /** An image from the repository, read-only. */
 function FilePreview({ id, path }: { id: RepoId; path: string }) {
