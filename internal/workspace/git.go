@@ -22,10 +22,11 @@ type GitState struct {
 	Head   string  `json:"head"`   // commit SHA, empty before the first commit
 	Branch *string `json:"branch"` // nil on a detached HEAD
 	Dirty  bool    `json:"dirty"`  // any tracked change or untracked, non-ignored file
+	Unsent int     `json:"unsent"` // commits GitHub keeps nowhere; 0 on a detached HEAD
 }
 
-// GitStatus reads the head commit, the branch, and whether the working tree
-// has uncommitted changes.
+// GitStatus reads the head commit, the branch, whether the working tree has
+// uncommitted changes, and how many commits are unsent.
 func GitStatus(root string) (GitState, error) {
 	out, err := runGit(root, "status", "--porcelain=v2", "--branch", "-z")
 	if err != nil {
@@ -47,7 +48,10 @@ func GitStatus(root string) (GitState, error) {
 			st.Dirty = true
 		}
 	}
-	return st, nil
+	if st.Branch != nil {
+		st.Unsent, err = gitx.Unsent(context.Background(), root, *st.Branch, st.Head)
+	}
+	return st, err
 }
 
 // RefreshIndex records the current size and time of unchanged files in Git's

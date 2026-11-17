@@ -112,10 +112,12 @@ func Clone(ctx context.Context, auth Auth, url, dir string) error {
 	return err
 }
 
-// Fetch updates the remote branches of origin. With refspecs it fetches
-// exactly those instead.
+// Fetch updates the remote branches of origin and its pull-request references
+// (refs/pull/<n>/head, which keep a pull request's head after its branch is
+// gone), pruning both. The refspecs are named here, not in .git/config. With
+// refspecs it fetches exactly those instead.
 func Fetch(ctx context.Context, dir string, auth Auth, refspecs ...string) error {
-	args := []string{"fetch", "--prune", "origin"}
+	args := []string{"fetch", "--prune", "origin", "--", "+refs/heads/*:refs/remotes/origin/*", "+refs/pull/*/head:refs/pull/*/head"}
 	if len(refspecs) > 0 {
 		args = append([]string{"fetch", "origin", "--"}, refspecs...)
 	}

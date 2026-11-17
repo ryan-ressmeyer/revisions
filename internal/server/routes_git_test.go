@@ -27,6 +27,7 @@ type statusBody struct {
 	// Conflicts and Permissions are pointers so a missing field is noticed.
 	Conflicts   *[]string
 	Permissions *struct{ Push bool }
+	Unsent      *int
 }
 
 func (st statusBody) files() string {
@@ -734,6 +735,120 @@ func TestForcePushPreviewListsCommitsWithOddSubjects(t *testing.T) {
 	}
 	if !found {
 		t.Error("the log leaves the commit out")
+	}
+}
+
+// hasRef reports whether the repository in dir has the ref.
+func hasRef(dir, ref string) bool {
+	return exec.Command("git", "-C", dir, "rev-parse", "--verify", "--quiet", ref).Run() == nil
+}
+
+// sendForReview puts a new branch "edits" with one commit on GitHub, opens a
+// pull request for it, and returns the commit and the pull request's ref.
+func (h *hosted) sendForReview(t *testing.T) (string, string) {
+	t.Helper()
+	ok[statusBody](t, h.call(t, "POST", testRepo+"/git/branches", map[string]string{"name": "edits"}))
+	write(t, h.clone, "main.tex", "edited\n")
+	h.commit(t, "Edit")
+	ok[statusBody](t, h.call(t, "POST", testRepo+"/git/push", nil))
+	pull := ok[pullBody](t, h.call(t, "POST", testRepo+"/pulls", map[string]string{"title": "Edit", "base": "main"}))
+	return h.head(t), fmt.Sprintf("refs/pull/%d/head", pull.Number)
+}
+
+// Every fetch brings GitHub's pull-request references, which hold a pull
+// request's head after its branch is gone, and prunes them as it prunes
+// branches. The commit graph leaves them out.
+func TestFetchBringsPullRequestRefs(t *testing.T) {
+	h := newOpened(t)
+	sent, ref := h.sendForReview(t)
+	ok[statusBody](t, h.call(t, "POST", testRepo+"/git/fetch", nil))
+	if !hasRef(h.clone, ref) || gitIn(t, h.clone, "rev-parse", ref) != sent {
+		t.Fatalf("the fetch did not bring %s at %s", ref, sent)
+	}
+
+	// The branch is gone here and on GitHub: only the reference holds the commit.
+	gitIn(t, h.bare, "branch", "-D", "edits")
+	ok[statusBody](t, h.call(t, "POST", testRepo+"/git/checkout", map[string]string{"branch": "main"}))
+	gitIn(t, h.clone, "branch", "-D", "edits")
+	ok[statusBody](t, h.call(t, "POST", testRepo+"/git/fetch", nil))
+	if !hasRef(h.clone, ref) {
+		t.Fatalf("%s went away with its branch", ref)
+	}
+	for _, c := range ok[logBody](t, h.call(t, "GET", testRepo+"/git/log", nil)).Commits {
+		if c.SHA == sent || slices.ContainsFunc(c.Refs, func(r string) bool { return strings.HasPrefix(r, "refs/pull/") }) {
+			t.Errorf("the log lists %+v", c)
+		}
+	}
+
+	gitIn(t, h.bare, "update-ref", "-d", ref)
+	ok[statusBody](t, h.call(t, "POST", testRepo+"/git/fetch", nil))
+	if hasRef(h.clone, ref) {
+		t.Fatalf("the fetch kept %s after GitHub removed it", ref)
+	}
+	if cfg := gitIn(t, h.clone, "config", "--get-all", "remote.origin.fetch"); cfg != "+refs/heads/*:refs/remotes/origin/*" {
+		t.Errorf("remote.origin.fetch = %q", cfg)
+	}
+}
+
+// Unsent commits are on the current branch and kept nowhere on GitHub: in no
+// remote branch and in no pull-request reference.
+func TestUnsent(t *testing.T) {
+	h := newOpened(t)
+	unsent := func(want int, when string) {
+		t.Helper()
+		if st := h.status(t); st.Unsent == nil || *st.Unsent != want {
+			t.Errorf("%s: R/git/status unsent = %v, want %d", when, st.Unsent, want)
+		}
+		state := ok[struct{ Git struct{ Unsent *int } }](t, h.call(t, "GET", testRepo+"/state", nil))
+		if state.Git.Unsent == nil || *state.Git.Unsent != want {
+			t.Errorf("%s: R/state git.unsent = %v, want %d", when, state.Git.Unsent, want)
+		}
+	}
+	unsent(0, "clean clone")
+
+	ok[statusBody](t, h.call(t, "POST", testRepo+"/git/branches", map[string]string{"name": "draft"}))
+	write(t, h.clone, "main.tex", "a draft\n")
+	h.commit(t, "Draft")
+	unsent(1, "a commit on a branch never sent")
+	ok[statusBody](t, h.call(t, "POST", testRepo+"/git/push", nil))
+	unsent(0, "after Send")
+
+	// The pull request outlives its branch on GitHub, and keeps its commit.
+	ok[statusBody](t, h.call(t, "POST", testRepo+"/git/checkout", map[string]string{"branch": "main"}))
+	h.sendForReview(t)
+	gitIn(t, h.bare, "branch", "-D", "edits")
+	ok[statusBody](t, h.call(t, "POST", testRepo+"/git/fetch", nil))
+	if hasRef(h.clone, "refs/remotes/origin/edits") {
+		t.Fatal("the fetch did not prune origin/edits")
+	}
+	unsent(0, "a commit held only by its pull request")
+
+	write(t, h.clone, "main.tex", "more\n")
+	h.commit(t, "More")
+	unsent(1, "a commit after the pull request")
+	ok[statusBody](t, h.call(t, "POST", testRepo+"/git/checkout", map[string]string{"commit": h.head(t)}))
+	unsent(0, "a snapshot")
+}
+
+// A fetch of origin that cannot reach GitHub says so, and changes nothing.
+func TestFetchWhenGitHubIsUnreachable(t *testing.T) {
+	h := newOpened(t)
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	closed := l.Addr().String()
+	l.Close()
+	gitIn(t, h.clone, "remote", "set-url", "origin", "http://"+closed+"/owner/name.git")
+	before, head := tree(t, h.clone), h.head(t)
+
+	for _, route := range []string{"POST /git/fetch", "POST /git/pull", "GET /git/force-push/preview"} {
+		method, path, _ := strings.Cut(route, " ")
+		wantError(t, h.call(t, method, testRepo+path, nil), 502, "host_unreachable")
+	}
+	wantError(t, h.call(t, "POST", "/api/open", map[string]string{"url": repoURL}), 502, "host_unreachable")
+	if !maps.Equal(tree(t, h.clone), before) || h.head(t) != head || gitIn(t, h.clone, "branch", "--show-current") != "main" {
+		t.Fatal("a failed fetch changed the working copy")
 	}
 }
 

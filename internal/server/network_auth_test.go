@@ -74,7 +74,7 @@ func TestFailedNetworkGitWithoutProvenUnauthorizedKeepsCredential(t *testing.T) 
 			gitIn(t, h.clone, "remote", "set-url", "origin", down.URL+"/owner/name.git")
 			h.onlyUser.Store(true)
 			h.reject.Store(int32(code))
-			wantError(t, h.call(t, "POST", testRepo+"/git/fetch", nil), 502, "git_failed")
+			wantError(t, h.call(t, "POST", testRepo+"/git/fetch", nil), 502, "host_unreachable")
 			if token, err := h.auth.tokens.Get(); err != nil || token != githubfake.Token {
 				t.Fatalf("lost credential: %q %v", token, err)
 			}

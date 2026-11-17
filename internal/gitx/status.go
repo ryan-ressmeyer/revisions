@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -131,6 +132,20 @@ func hasConflictMarkers(path string) bool {
 		}
 	}
 	return false
+}
+
+// Unsent counts the commits reachable from head, the tip of branch, that no
+// remote-tracking branch or pull-request reference holds. It is 0 on a
+// detached HEAD (branch "") and before the first commit (head "").
+func Unsent(ctx context.Context, dir, branch, head string) (int, error) {
+	if branch == "" || head == "" {
+		return 0, nil
+	}
+	out, err := git(ctx, dir, "rev-list", "--count", head, "--not", "--remotes", "--glob=refs/pull/*")
+	if err != nil {
+		return 0, err
+	}
+	return strconv.Atoi(strings.TrimSpace(out))
 }
 
 // Resolve returns the object that rev names, and false when rev names nothing

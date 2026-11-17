@@ -242,13 +242,36 @@ func (s *Server) hostFailure(ctx context.Context, token string, err error) error
 // A Git failure is auth loss only when an uncached REST check of the exact
 // operation token proves it. Network failures and conflicts stay Git errors.
 func (s *Server) networkGitFailed(w http.ResponseWriter, r *http.Request, token string, err error) {
-	if !errors.Is(err, gitx.ErrMissing) {
-		if _, check := s.auth.host.User(r.Context(), token); errors.Is(check, host.ErrUnauthorized) {
-			hostFailed(w, s.hostFailure(r.Context(), token, check))
-			return
-		}
+	if !s.gitAuthLost(w, r, token, err) {
+		gitFailed(w, err)
 	}
-	gitFailed(w, err)
+}
+
+// fetchFailed answers for a failed fetch of origin. Git's error text cannot
+// reliably tell an unreachable GitHub from other remote failures, so any
+// failure that is neither proven auth loss nor a missing Git is 502
+// host_unreachable.
+func (s *Server) fetchFailed(w http.ResponseWriter, r *http.Request, token string, err error) {
+	switch {
+	case s.gitAuthLost(w, r, token, err):
+	case errors.Is(err, gitx.ErrMissing):
+		gitFailed(w, err)
+	default:
+		hostFailed(w, err) // a Git error is no host.Error, so describeHostError calls it unreachable
+	}
+}
+
+// gitAuthLost answers and reports true when an uncached REST check with the
+// operation's token proves that token rejected.
+func (s *Server) gitAuthLost(w http.ResponseWriter, r *http.Request, token string, err error) bool {
+	if errors.Is(err, gitx.ErrMissing) {
+		return false
+	}
+	_, check := s.auth.host.User(r.Context(), token)
+	if errors.Is(check, host.ErrUnauthorized) {
+		hostFailed(w, s.hostFailure(r.Context(), token, check))
+	}
+	return errors.Is(check, host.ErrUnauthorized)
 }
 
 // hostUser returns the account behind token, asking the host once per token.
@@ -571,7 +594,7 @@ func (s *Server) open(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else if err := gitx.Fetch(ctx, dir, auth); err != nil {
-		s.networkGitFailed(w, r, token, err)
+		s.fetchFailed(w, r, token, err)
 		return
 	}
 

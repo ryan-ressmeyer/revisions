@@ -230,6 +230,10 @@ func TestPullRequests(t *testing.T) {
 	if err != nil || created != want {
 		t.Fatalf("CreatePullRequest = %+v, %v; want %+v", created, err, want)
 	}
+	// As GitHub does, the fake keeps the head commit at refs/pull/<n>/head.
+	if got := gitOut("rev-parse", "refs/pull/1/head"); got != head {
+		t.Errorf("refs/pull/1/head = %s, want %s", got, head)
+	}
 	if got, err := h.PullRequest(ctx, githubfake.Token, repo, 1); err != nil || got != want {
 		t.Fatalf("PullRequest(1) = %+v, %v", got, err)
 	}
@@ -250,6 +254,9 @@ func TestPullRequests(t *testing.T) {
 	n := fake.AddPull("owner/name", githubfake.Pull{Title: "From a fork", HeadRepo: "forker/name", HeadRef: "patch-1", HeadSHA: head})
 	if got, err := h.PullRequest(ctx, githubfake.Token, repo, n); err != nil || got.SameRepo || got.HeadRef != "patch-1" {
 		t.Errorf("fork pull request = %+v, %v", got, err)
+	}
+	if got := gitOut("rev-parse", fmt.Sprintf("refs/pull/%d/head", n)); got != head {
+		t.Errorf("refs/pull/%d/head = %s, want %s", n, got, head)
 	}
 }
 

@@ -25,6 +25,8 @@ export interface GitStatus {
 	upstreamGone: boolean;
 	ahead: number;
 	behind: number;
+	/** Commits on the branch that GitHub keeps nowhere; 0 on a snapshot. */
+	unsent: number;
 	files: FileStatus[];
 	merging: boolean;
 	conflicts: string[];

@@ -118,12 +118,16 @@ func (f *Fake) Requests(route string) int {
 }
 
 // AddPull records an existing pull request on repo and returns its number.
+// When the bare repository has the head commit, refs/pull/<n>/head points at
+// it; a test may push a fork's head there itself later.
 func (f *Fake) AddPull(repo string, pull Pull) int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.addPull(repo, pull)
 }
 
+// addPull records the pull request and, as GitHub does, keeps its head commit
+// at refs/pull/<n>/head in the bare repository.
 func (f *Fake) addPull(repo string, pull Pull) int {
 	pull.Number = len(f.pulls[repo]) + 1
 	if pull.State == "" {
@@ -133,6 +137,10 @@ func (f *Fake) addPull(repo string, pull Pull) int {
 		pull.HeadRepo = repo
 	}
 	f.pulls[repo] = append(f.pulls[repo], pull)
+	if pull.HeadSHA != "" {
+		bare := filepath.Join(f.Remotes, filepath.FromSlash(repo)+".git")
+		git(bare, "update-ref", fmt.Sprintf("refs/pull/%d/head", pull.Number), pull.HeadSHA)
+	}
 	return pull.Number
 }
 

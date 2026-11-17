@@ -100,9 +100,7 @@ Text typed in one window while another window switches branch is saved onto the 
 
 `specs/architecture.md` holds the binding contract. These changes move into it in the same commit as the code that implements them.
 
-- `GET R/state`: `git` gains `unsent`, the number of unsent commits, or 0 on a snapshot.
-- `GET R/git/status`: gains `unsent`, as above, and `finished: [{name, pull, fingerprint}]`, the finished branches. `pull` is the number of a pull request whose reference holds the branch tip, or 0. `fingerprint` is that of the deletion preview.
-- `POST R/git/fetch`, and every other fetch of `origin`: also fetch pull-request references as above. A fetch that cannot reach GitHub answers 502 `host_unreachable`.
+- `GET R/git/status`: gains `finished: [{name, pull, fingerprint}]`, the finished branches. `pull` is the number of a pull request whose reference holds the branch tip, or 0. `fingerprint` is that of the deletion preview.
 - `POST R/git/pull`: answers 409 `dirty` with `files` whenever there are uncommitted changes, before merging.
 - `GET R/git/branches/delete/preview?name=`: `{name, head, commits, fingerprint}`. `commits` lists the branch's commits reachable from no other local branch, remote-tracking branch, or pull-request reference, in the shape of the log's commits. `fingerprint` is a hash of `head` and those commits. Errors: 400 `bad_branch`, 404 `not_found`, 409 `current` for the current branch.
 - `POST R/git/branches/delete`: body `{name, fingerprint}`. Recomputes the preview and answers 409 `changed` when its fingerprint differs, deleting nothing. Otherwise deletes the branch only if it still points at `head` (`git update-ref -d refs/heads/<name> <head>`), removes its tracking configuration, and answers with the new status. Errors: those of the preview, and 400 `bad_request` without a fingerprint. GitHub is never changed.

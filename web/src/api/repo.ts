@@ -46,7 +46,13 @@ export interface RepoState {
 	/** Changes when a file is added or removed, not when one is edited. */
 	tree: string;
 	build: { state: BuildState; pdfVersion: number; stale: boolean };
-	git: { head: string; branch: string | null; dirty: boolean };
+	git: {
+		head: string;
+		branch: string | null;
+		dirty: boolean;
+		/** Commits on the branch that GitHub keeps nowhere; 0 on a snapshot. */
+		unsent: number;
+	};
 }
 
 export function getState(id: RepoId): Promise<RepoState> {

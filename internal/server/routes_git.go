@@ -179,6 +179,7 @@ type statusResponse struct {
 	UpstreamGone bool              `json:"upstreamGone"` // the upstream was removed on GitHub
 	Ahead        int               `json:"ahead"`
 	Behind       int               `json:"behind"`
+	Unsent       int               `json:"unsent"` // commits GitHub keeps nowhere; 0 on a detached HEAD
 	Files        []gitx.FileStatus `json:"files"`
 	Merging      bool              `json:"merging"`
 	Conflicts    []string          `json:"conflicts"`
@@ -206,6 +207,11 @@ func (s *Server) writeStatus(w http.ResponseWriter, r *http.Request, id workspac
 	body := statusResponse{
 		Branch: branchOrNull(st.Branch), Head: st.Head, Upstream: branchOrNull(st.Upstream), UpstreamGone: st.UpstreamGone,
 		Ahead: st.Ahead, Behind: st.Behind, Files: st.Files, Merging: st.Merging, Conflicts: st.Conflicts,
+	}
+	var err error
+	if body.Unsent, err = gitx.Unsent(r.Context(), dir, st.Branch, st.Head); err != nil {
+		gitFailed(w, err)
+		return
 	}
 	if st.Branch == "" && st.Head != "" {
 		c, err := gitx.HeadCommit(r.Context(), dir)
@@ -324,7 +330,7 @@ func (s *Server) gitFetch(w http.ResponseWriter, r *http.Request, id workspace.R
 		return
 	}
 	if err := gitx.Fetch(r.Context(), dir, s.gitAuth(token)); err != nil {
-		s.networkGitFailed(w, r, token, err)
+		s.fetchFailed(w, r, token, err)
 		return
 	}
 	s.writeStatus(w, r, id, dir)
@@ -342,7 +348,7 @@ func (s *Server) gitPull(w http.ResponseWriter, r *http.Request, id workspace.Re
 	// get, and the fetch is what notices a branch removed on GitHub.
 	ctx := r.Context()
 	if err := gitx.Fetch(ctx, dir, s.gitAuth(token)); err != nil {
-		s.networkGitFailed(w, r, token, err)
+		s.fetchFailed(w, r, token, err)
 		return
 	}
 	who := s.commitIdentity(ctx)
@@ -438,7 +444,7 @@ func (s *Server) gitForcePreview(w http.ResponseWriter, r *http.Request, id work
 		return
 	}
 	if err := gitx.Fetch(r.Context(), dir, s.gitAuth(token)); err != nil {
-		s.networkGitFailed(w, r, token, err)
+		s.fetchFailed(w, r, token, err)
 		return
 	}
 	remote, erased, err := gitx.ForcePushPreview(r.Context(), dir, st.Branch)
