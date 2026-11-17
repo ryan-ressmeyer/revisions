@@ -87,6 +87,8 @@ func (s *Server) registerGit(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+R+"/git/checkout", change(s.gitCheckout))
 	mux.HandleFunc("GET "+R+"/git/discard/preview", read(s.gitDiscardPreview))
 	mux.HandleFunc("POST "+R+"/git/discard", change(s.gitDiscard))
+	mux.HandleFunc("GET "+R+"/git/branches/delete/preview", read(s.gitDeletePreview))
+	mux.HandleFunc("POST "+R+"/git/branches/delete", change(s.gitDeleteBranch))
 	mux.HandleFunc("POST "+R+"/pulls", read(s.createPull))
 }
 
@@ -186,8 +188,18 @@ type statusResponse struct {
 	Permissions  struct {
 		Push bool `json:"push"`
 	} `json:"permissions"`
-	Snapshot  *snapshot    `json:"snapshot"` // null on a branch
-	AuthError *authProblem `json:"authError,omitempty"`
+	Snapshot      *snapshot        `json:"snapshot"` // null on a branch
+	Finished      []finishedBranch `json:"finished"`
+	DefaultBranch *string          `json:"defaultBranch"` // origin/HEAD; null when unknown
+	AuthError     *authProblem     `json:"authError,omitempty"`
+}
+
+// finishedBranch is a local branch whose GitHub branch was removed and whose
+// commits GitHub keeps.
+type finishedBranch struct {
+	Name        string `json:"name"`
+	Pull        int    `json:"pull"`        // a pull request holding its tip, or 0
+	Fingerprint string `json:"fingerprint"` // that of its deletion preview
 }
 
 // snapshot is the version a detached HEAD shows, and where "back" goes.
@@ -221,6 +233,22 @@ func (s *Server) writeStatus(w http.ResponseWriter, r *http.Request, id workspac
 		}
 		body.Snapshot = &snapshot{Subject: c.Subject, Date: c.Date, ReturnTo: branchOrNull(gitx.ReturnBranch(r.Context(), dir))}
 	}
+	skip := ""
+	if st.Dirty() {
+		skip = st.Branch
+	}
+	finished, err := gitx.FinishedBranches(r.Context(), dir, skip)
+	if err != nil {
+		gitFailed(w, err)
+		return
+	}
+	body.Finished = []finishedBranch{}
+	for _, f := range finished {
+		// Every commit of a finished branch is kept on GitHub, so its
+		// deletion preview lists none.
+		body.Finished = append(body.Finished, finishedBranch{Name: f.Name, Pull: f.Pull, Fingerprint: deletionFingerprint(f.Head, nil)})
+	}
+	body.DefaultBranch = branchOrNull(gitx.DefaultBranch(r.Context(), dir))
 	// Signed out or offline, pushing is not on offer.
 	token, err := s.hostToken(r.Context())
 	if err == nil {
@@ -674,4 +702,96 @@ func (s *Server) createPull(w http.ResponseWriter, r *http.Request, id workspace
 	default:
 		writeJSON(w, http.StatusOK, pull)
 	}
+}
+
+type deletePreview struct {
+	Name        string           `json:"name"`
+	Head        string           `json:"head"`
+	Commits     []gitx.LogCommit `json:"commits"`     // held by no other branch or pull-request reference
+	Fingerprint string           `json:"fingerprint"` // what POST R/git/branches/delete must name
+}
+
+// deletionFingerprint names a deletion preview: the branch tip and the
+// commits only it holds.
+func deletionFingerprint(head string, commits []gitx.LogCommit) string {
+	shas := []string{}
+	for _, c := range commits {
+		shas = append(shas, c.SHA)
+	}
+	summary, _ := json.Marshal([]any{head, shas})
+	return workspace.Hash(summary)
+}
+
+// previewDelete describes what deleting the local branch name would lose, or
+// answers with why it cannot be deleted.
+func previewDelete(w http.ResponseWriter, r *http.Request, dir, name string) (deletePreview, bool) {
+	ctx := r.Context()
+	if err := gitx.CheckBranchName(ctx, dir, name); err != nil {
+		writeError(w, http.StatusBadRequest, "bad_branch", "That is not a valid branch name.")
+		return deletePreview{}, false
+	}
+	head, found, err := gitx.Resolve(ctx, dir, "refs/heads/"+name)
+	if err != nil {
+		gitFailed(w, err)
+		return deletePreview{}, false
+	}
+	if !found {
+		writeError(w, http.StatusNotFound, "not_found", "This computer has no branch with that name.")
+		return deletePreview{}, false
+	}
+	st, ok := status(w, r, dir)
+	if !ok {
+		return deletePreview{}, false
+	}
+	if st.Branch == name {
+		writeError(w, http.StatusConflict, "current", "You are on this branch. Switch to another branch before deleting it.")
+		return deletePreview{}, false
+	}
+	commits, err := gitx.OnlyOn(ctx, dir, name, head)
+	if err != nil {
+		gitFailed(w, err)
+		return deletePreview{}, false
+	}
+	return deletePreview{Name: name, Head: head, Commits: commits, Fingerprint: deletionFingerprint(head, commits)}, true
+}
+
+func (s *Server) gitDeletePreview(w http.ResponseWriter, r *http.Request, id workspace.RepoID, dir string) {
+	if p, ok := previewDelete(w, r, dir, r.URL.Query().Get("name")); ok {
+		writeJSON(w, http.StatusOK, p)
+	}
+}
+
+// gitDeleteBranch deletes a local branch, never the GitHub one. It changes no
+// file and not HEAD, so saves need not wait.
+func (s *Server) gitDeleteBranch(w http.ResponseWriter, r *http.Request, id workspace.RepoID, dir string) {
+	var body struct {
+		Name        string `json:"name"`
+		Fingerprint string `json:"fingerprint"`
+	}
+	if !readJSON(w, r, &body) {
+		return
+	}
+	if body.Fingerprint == "" {
+		badRequest(w, "A deletion must name the preview it confirms.")
+		return
+	}
+	const changed = "The branch changed after the preview, so nothing was deleted. Review it again."
+	p, ok := previewDelete(w, r, dir, body.Name)
+	switch {
+	case !ok:
+		return
+	case p.Fingerprint != body.Fingerprint:
+		writeError(w, http.StatusConflict, "changed", changed)
+		return
+	}
+	if err := gitx.DeleteBranch(r.Context(), dir, p.Name, p.Head); err != nil {
+		// Another Git process moved the branch since the preview.
+		if now, found, _ := gitx.Resolve(r.Context(), dir, "refs/heads/"+p.Name); found && now != p.Head {
+			writeError(w, http.StatusConflict, "changed", changed)
+		} else {
+			gitFailed(w, err)
+		}
+		return
+	}
+	s.writeStatus(w, r, id, dir)
 }

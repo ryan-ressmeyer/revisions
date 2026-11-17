@@ -265,17 +265,17 @@ Requirements from here on are in `specs/git-workflow.md`.
 
 | Scenario | Test |
 |---|---|
-| Delete a branch with unique commits | `pending` |
-| Delete a squash-merged branch | `pending` |
-| Changed deletion preview | `pending` |
+| Delete a branch with unique commits | `internal/server/routes_git_test.go: TestDeleteALocalBranch`; `internal/gitx/gitx_test.go: TestDeleteBranchOnlyFromTheExpectedCommit`; `web/e2e/git.spec.ts: "Delete a branch with unique commits"` |
+| Delete a squash-merged branch | `internal/server/routes_git_test.go: TestFinishedBranches`; `web/e2e/git.spec.ts: "Delete a squash-merged branch"` |
+| Changed deletion preview | `internal/server/routes_git_test.go: TestDeleteALocalBranch`; `web/e2e/git.spec.ts: "Changed deletion preview"` |
 
 ## Tidy finished branches
 
 | Scenario | Test |
 |---|---|
-| Finished after a squash merge | `pending` |
-| Unsent work keeps a branch | `pending` |
-| Finished current branch | `pending` |
+| Finished after a squash merge | `internal/server/routes_git_test.go: TestFinishedBranches`; `web/e2e/git.spec.ts: "Finished after a squash merge"` |
+| Unsent work keeps a branch | `internal/server/routes_git_test.go: TestFinishedBranches`; `web/e2e/git.spec.ts: "Unsent work keeps a branch"` |
+| Finished current branch | `internal/server/routes_git_test.go: TestFinishedBranches`; `web/e2e/git.spec.ts: "Finished current branch"` |
 
 ## Saves around Git operations
 

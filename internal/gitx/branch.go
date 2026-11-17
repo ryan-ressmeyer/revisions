@@ -18,6 +18,86 @@ func checkBranch(name string) error {
 	return nil
 }
 
+// CheckBranchName returns ErrBadBranch unless name can be a local branch.
+// Such a name holds no glob character, space, or control character.
+func CheckBranchName(ctx context.Context, dir, name string) error {
+	if err := checkBranch(name); err != nil {
+		return err
+	}
+	if _, err := git(ctx, dir, "check-ref-format", "refs/heads/"+name); err != nil {
+		return ErrBadBranch
+	}
+	return nil
+}
+
+// OnlyOn lists the commits of the local branch name, whose tip is head, that
+// no other local branch, remote-tracking branch, or pull-request reference
+// holds. name must have passed CheckBranchName.
+func OnlyOn(ctx context.Context, dir, name, head string) ([]LogCommit, error) {
+	// --exclude names a branch without refs/heads/ for --branches; a valid
+	// branch name holds no glob character, so it matches only itself.
+	return log(ctx, dir, head, "--not", "--exclude="+name, "--branches", "--remotes", "--glob=refs/pull/*")
+}
+
+// DeleteBranch deletes the local branch name only while it points at head,
+// then removes its tracking configuration (branch.<name>.*).
+func DeleteBranch(ctx context.Context, dir, name, head string) error {
+	if _, err := git(ctx, dir, "update-ref", "-d", "refs/heads/"+name, head); err != nil {
+		return err
+	}
+	_, err := git(ctx, dir, "config", "--remove-section", "branch."+name)
+	var e *Error
+	if errors.As(err, &e) && strings.Contains(e.Stderr, "no such section") {
+		return nil
+	}
+	return err
+}
+
+// Finished is a local branch whose GitHub branch was removed and whose commits
+// GitHub keeps all of.
+type Finished struct {
+	Name string
+	Head string
+	Pull int // a pull request whose reference holds Head, or 0
+}
+
+// FinishedBranches lists the finished branches: each tracked a branch of
+// origin that is now gone, and has no commit outside the remote-tracking
+// branches and pull-request references. skip, the current branch when it has
+// uncommitted changes, is left out.
+func FinishedBranches(ctx context.Context, dir, skip string) ([]Finished, error) {
+	out, err := git(ctx, dir, "for-each-ref", "--format=%(refname:strip=2) %(objectname) %(upstream) %(upstream:track)", "refs/heads")
+	if err != nil {
+		return nil, err
+	}
+	finished := []Finished{}
+	for line := range strings.Lines(out) {
+		// Ref names hold no spaces, so the fields split cleanly.
+		f := strings.SplitN(strings.TrimSpace(line), " ", 4)
+		if len(f) != 4 || f[0] == skip || !strings.HasPrefix(f[2], "refs/remotes/origin/") || f[3] != "[gone]" {
+			continue
+		}
+		unsent, err := git(ctx, dir, "rev-list", "--count", f[1], "--not", "--remotes", "--glob=refs/pull/*")
+		if err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(unsent) != "0" {
+			continue
+		}
+		b := Finished{Name: f[0], Head: f[1]}
+		pulls, err := git(ctx, dir, "for-each-ref", "--contains="+f[1], "--format=%(refname)", "refs/pull/")
+		if err != nil {
+			return nil, err
+		}
+		for ref := range strings.Lines(pulls) {
+			n, _ := strconv.Atoi(strings.TrimSuffix(strings.TrimPrefix(strings.TrimSpace(ref), "refs/pull/"), "/head"))
+			b.Pull = max(b.Pull, n) // the newest pull request
+		}
+		finished = append(finished, b)
+	}
+	return finished, nil
+}
+
 // Switch checks out the existing local branch.
 func Switch(ctx context.Context, dir, branch string) error {
 	if err := checkBranch(branch); err != nil {
@@ -31,11 +111,8 @@ func Switch(ctx context.Context, dir, branch string) error {
 // carry over. With start "" the branch begins at HEAD. Otherwise it begins at
 // the ref start, which becomes its upstream when track is set.
 func CreateBranch(ctx context.Context, dir, name, start string, track bool) error {
-	if err := checkBranch(name); err != nil {
+	if err := CheckBranchName(ctx, dir, name); err != nil {
 		return err
-	}
-	if _, err := git(ctx, dir, "check-ref-format", "refs/heads/"+name); err != nil {
-		return ErrBadBranch
 	}
 	args := []string{"switch", "--quiet", "-c", name}
 	if start != "" {
@@ -74,6 +151,12 @@ func ReturnBranch(ctx context.Context, dir string) string {
 			}
 		}
 	}
+	return DefaultBranch(ctx, dir)
+}
+
+// DefaultBranch is origin's default branch as of the clone or the last
+// `remote set-head` (refs/remotes/origin/HEAD), or "" when unknown.
+func DefaultBranch(ctx context.Context, dir string) string {
 	out, err := git(ctx, dir, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
 	if err != nil {
 		return ""

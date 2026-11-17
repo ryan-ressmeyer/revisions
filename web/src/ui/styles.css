@@ -2326,3 +2326,15 @@ pre.command {
 	border-radius: 6px;
 	background: var(--surface-2);
 }
+
+.finished-list {
+	list-style: none;
+	padding: 0;
+	margin: 0;
+}
+
+.git-panel .finished-list li {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+}

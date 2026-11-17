@@ -1196,3 +1196,200 @@ test.describe("slow switch", () => {
 		expect(git(server.paper, "branch", "--show-current")).toBe("draft");
 	});
 });
+
+const refsOf = (dir: string) =>
+	git(dir, "for-each-ref", "--format=%(objectname) %(refname)");
+const hasBranch = (dir: string, name: string) =>
+	git(dir, "branch", "--list", name) !== "";
+
+/** Adds an empty commit on branch `name` of `dir` without checking it out. */
+function commitOn(dir: string, name: string, subject: string) {
+	const tip = git(dir, "rev-parse", name);
+	const next = git(
+		dir,
+		"commit-tree",
+		"-p",
+		tip,
+		"-m",
+		subject,
+		`${tip}^{tree}`,
+	);
+	git(dir, "update-ref", `refs/heads/${name}`, next);
+	return next;
+}
+
+/**
+ * On the page's clone: commits a new file on a new branch `name`, sends it,
+ * and opens a pull request for it through the fake. Leaves the clone on that
+ * branch and returns the pull request's number.
+ */
+async function propose(server: Server, github: Fake, name: string) {
+	git(server.paper, "switch", "--quiet", "-c", name);
+	writeFileSync(join(server.paper, `${name}.tex`), `% on ${name}\n`);
+	git(server.paper, "add", "-A");
+	git(server.paper, "commit", "--quiet", "-m", `Work on ${name}`);
+	git(server.paper, "push", "--quiet", "-u", "origin", name);
+	const res = await fetch(`${github.apiUrl}/repos/ada/paper/pulls`, {
+		method: "POST",
+		headers: {
+			Authorization: `Bearer ${github.token}`,
+			"Content-Type": "application/json",
+		},
+		body: JSON.stringify({
+			title: `Work on ${name}`,
+			head: name,
+			base: "main",
+		}),
+	});
+	expect(res.status).toBe(201);
+	return ((await res.json()) as { number: number }).number;
+}
+
+/** The author squash-merges the pull request for `name` and deletes its branch on GitHub. */
+function squashMerge(github: Fake, name: string) {
+	const author = coauthor(github);
+	author.git("merge", "--quiet", "--squash", `origin/${name}`);
+	author.git("commit", "--quiet", "-m", `Squashed ${name}`);
+	author.git("push", "--quiet", "origin", "main");
+	author.git("push", "--quiet", "origin", "--delete", name);
+	author.remove();
+}
+
+/** Opens the deletion confirmation for `name` from the Branches dialog. */
+async function previewDeletion(page: Page, name: string) {
+	await panel(page).getByRole("button", { name: "Branch…" }).click();
+	await page
+		.getByRole("dialog", { name: "Branches" })
+		.getByRole("button", { name: `Delete ${name}…` })
+		.click();
+	return page.getByRole("dialog", { name: `Delete branch ${name}?` });
+}
+
+const finished = (page: Page) =>
+	panel(page).getByRole("list", { name: "Finished branches" });
+
+test("Delete a branch with unique commits", async ({
+	page,
+	github,
+	server,
+}) => {
+	await open(page);
+	git(server.paper, "branch", "side");
+	commitOn(server.paper, "side", "A note only on side");
+	const before = refsOf(bare(github));
+	await openPanel(page);
+
+	const dialog = await previewDeletion(page, "side");
+	const lost = dialog.getByRole("list", { name: "Commits that will be lost" });
+	await expect(lost).toContainText("A note only on side");
+	await expect(dialog).toContainText("lost from this computer");
+	await expect(dialog).toContainText("GitHub is not changed");
+	expect(hasBranch(server.paper, "side")).toBe(true);
+	await dialog.getByRole("button", { name: "Delete branch" }).click();
+
+	await expect(dialog).toBeHidden();
+	await expect(panel(page).getByRole("status")).toContainText(
+		"Branch side was deleted from this computer",
+	);
+	expect(hasBranch(server.paper, "side")).toBe(false);
+	expect(hasBranch(server.paper, "main")).toBe(true);
+	expect(refsOf(bare(github))).toBe(before);
+});
+
+test("Delete a squash-merged branch", async ({ page, github, server }) => {
+	await open(page);
+	await propose(server, github, "feature");
+	git(server.paper, "switch", "--quiet", "main");
+	squashMerge(github, "feature");
+	await openPanel(page);
+	// The check on opening the panel brings the pull request's reference.
+	await expect(finished(page)).toContainText("feature");
+
+	const dialog = await previewDeletion(page, "feature");
+	await expect(dialog).toContainText(
+		"Every commit on feature is kept elsewhere",
+	);
+	await expect(
+		dialog.getByRole("list", { name: "Commits that will be lost" }),
+	).toHaveCount(0);
+	await dialog.getByRole("button", { name: "Delete branch" }).click();
+	await expect(dialog).toBeHidden();
+	expect(hasBranch(server.paper, "feature")).toBe(false);
+});
+
+test("Changed deletion preview", async ({ page, server }) => {
+	await open(page);
+	git(server.paper, "branch", "side");
+	commitOn(server.paper, "side", "First note");
+	await openPanel(page);
+	const dialog = await previewDeletion(page, "side");
+	const lost = dialog.getByRole("list", { name: "Commits that will be lost" });
+	await expect(lost.getByRole("listitem")).toHaveCount(1);
+
+	const late = commitOn(server.paper, "side", "A late note");
+	await dialog.getByRole("button", { name: "Delete branch" }).click();
+	await expect(dialog.getByRole("alert")).toContainText("nothing was deleted");
+	await expect(lost.getByRole("listitem")).toHaveCount(2);
+	await expect(lost).toContainText("A late note");
+	expect(git(server.paper, "rev-parse", "side")).toBe(late);
+});
+
+test("Finished after a squash merge", async ({ page, github, server }) => {
+	await open(page);
+	const number = await propose(server, github, "feature");
+	git(server.paper, "switch", "--quiet", "main");
+	squashMerge(github, "feature");
+	const before = refsOf(bare(github));
+
+	await openPanel(page);
+	const item = finished(page)
+		.getByRole("listitem")
+		.filter({ hasText: "feature" });
+	await expect(item).toContainText("kept on GitHub");
+	await expect(item).toContainText(`kept in pull request #${number}`);
+	// Listed, not removed: removal waits for the click.
+	await page.waitForTimeout(500);
+	expect(hasBranch(server.paper, "feature")).toBe(true);
+
+	await item.getByRole("button", { name: "Remove branch feature" }).click();
+	await expect(finished(page)).toHaveCount(0);
+	expect(hasBranch(server.paper, "feature")).toBe(false);
+	expect(refsOf(bare(github))).toBe(before);
+});
+
+test("Unsent work keeps a branch", async ({ page, github, server }) => {
+	await open(page);
+	await propose(server, github, "feature");
+	git(server.paper, "switch", "--quiet", "main");
+	await propose(server, github, "done");
+	git(server.paper, "switch", "--quiet", "main");
+	squashMerge(github, "feature");
+	squashMerge(github, "done");
+	commitOn(server.paper, "feature", "Never sent");
+
+	await openPanel(page);
+	// After the check, the branch with nothing unsent is listed; feature is not.
+	await expect(finished(page).getByRole("listitem")).toHaveCount(1);
+	await expect(finished(page)).toContainText("done");
+	await expect(finished(page)).not.toContainText("feature");
+	expect(hasBranch(server.paper, "feature")).toBe(true);
+});
+
+test("Finished current branch", async ({ page, github, server }) => {
+	await open(page);
+	await propose(server, github, "feature");
+	squashMerge(github, "feature");
+	await expect(topbar(page).getByText("on branch feature")).toBeVisible();
+
+	await openPanel(page);
+	const item = finished(page)
+		.getByRole("listitem")
+		.filter({ hasText: "feature" });
+	await item.getByRole("button", { name: "Remove branch feature" }).click();
+	await expect(topbar(page).getByText("on branch main")).toBeVisible();
+	await expect(panel(page).getByRole("status")).toContainText(
+		"You are now on branch main",
+	);
+	expect(git(server.paper, "branch", "--show-current")).toBe("main");
+	expect(hasBranch(server.paper, "feature")).toBe(false);
+});

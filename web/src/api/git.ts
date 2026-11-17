@@ -59,6 +59,18 @@ export interface GitStatus {
 	permissions: { push: boolean };
 	/** The version on screen while HEAD is detached; null on a branch. */
 	snapshot: Snapshot | null;
+	/** Local branches removed from GitHub whose commits GitHub keeps. */
+	finished: FinishedBranch[];
+	/** The remote's default branch; null when unknown. */
+	defaultBranch: string | null;
+}
+
+export interface FinishedBranch {
+	name: string;
+	/** A pull request holding the branch tip, or 0. */
+	pull: number;
+	/** That of the branch's deletion preview. */
+	fingerprint: string;
 }
 
 export interface Snapshot {
@@ -210,4 +222,34 @@ export function createPull(
 	base = "",
 ): Promise<PullRequest> {
 	return op("POST", `${R(id)}/pulls`, { title, body, base });
+}
+
+export interface DeletePreview {
+	name: string;
+	head: string;
+	/** Commits that no other branch or pull-request reference holds. */
+	commits: Commit[];
+	/** Names exactly this preview; the deletion is refused if it changed. */
+	fingerprint: string;
+}
+
+/** Errors: 400 `bad_branch`, 404 `not_found`, 409 `current`. */
+export function gitDeletePreview(
+	id: RepoId,
+	name: string,
+): Promise<DeletePreview> {
+	return json(
+		"GET",
+		`${R(id)}/git/branches/delete/preview?${new URLSearchParams({ name })}`,
+	);
+}
+
+/** Deletes the local branch only; GitHub is never changed. Errors as for
+ * {@link gitDeletePreview}, and 409 `changed` when the preview differs. */
+export function gitDeleteBranch(
+	id: RepoId,
+	name: string,
+	fingerprint: string,
+): Promise<GitStatus> {
+	return op("POST", `${R(id)}/git/branches/delete`, { name, fingerprint });
 }

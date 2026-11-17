@@ -121,3 +121,41 @@ func TestMissingGit(t *testing.T) {
 		t.Fatalf("got %v, want ErrMissing", err)
 	}
 }
+
+// DeleteBranch deletes a branch only while it still points where the caller
+// last saw it, and takes its tracking configuration with it.
+func TestDeleteBranchOnlyFromTheExpectedCommit(t *testing.T) {
+	isolate(t)
+	ctx := t.Context()
+	dir := t.TempDir()
+	must(t, "", "init", "-b", "main", dir)
+	id := []string{"-c", "user.name=Author", "-c", "user.email=author@example.com"}
+	must(t, dir, append(id, "commit", "--allow-empty", "-m", "first")...)
+	first := must(t, dir, "rev-parse", "HEAD")
+	must(t, dir, append(id, "commit", "--allow-empty", "-m", "second")...)
+	must(t, dir, "branch", "side", first)
+	must(t, dir, "config", "branch.side.remote", "origin")
+	must(t, dir, "config", "branch.side.merge", "refs/heads/side")
+
+	stale := must(t, dir, "rev-parse", "HEAD")
+	if err := DeleteBranch(ctx, dir, "side", stale); err == nil {
+		t.Fatal("deleted a branch that had moved")
+	}
+	if got := must(t, dir, "rev-parse", "refs/heads/side"); got != first {
+		t.Fatalf("side = %s after a refused deletion", got)
+	}
+	if err := DeleteBranch(ctx, dir, "side", first); err != nil {
+		t.Fatal(err)
+	}
+	if _, found, _ := Resolve(ctx, dir, "refs/heads/side"); found {
+		t.Fatal("side is still there")
+	}
+	if out, _ := git(ctx, dir, "config", "--get-regexp", `^branch\.side\.`); out != "" {
+		t.Errorf("tracking configuration left behind: %s", out)
+	}
+	// A branch with no tracking configuration deletes too.
+	must(t, dir, "branch", "plain", first)
+	if err := DeleteBranch(ctx, dir, "plain", first); err != nil {
+		t.Fatalf("a branch without tracking configuration: %v", err)
+	}
+}

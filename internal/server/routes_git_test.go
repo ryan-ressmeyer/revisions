@@ -6,6 +6,7 @@ import (
 	"maps"
 	"net"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -1036,5 +1037,192 @@ func TestSaveDuringASlowFetch(t *testing.T) {
 	ok[saveResult](t, rec)
 	if got := <-fetch; got.Code != 502 {
 		t.Fatalf("the fetch answered %d %s", got.Code, got.Body)
+	}
+}
+
+type deletePreviewBody struct {
+	Name        string
+	Head        string
+	Commits     []commitBody
+	Fingerprint string
+}
+
+type finishedStatus struct {
+	statusBody
+	Finished *[]struct {
+		Name        string
+		Pull        int
+		Fingerprint string
+	}
+	DefaultBranch *string `json:"defaultBranch"`
+}
+
+func (h *hosted) deletePreview(t *testing.T, name string) *httptest.ResponseRecorder {
+	t.Helper()
+	return h.call(t, "GET", testRepo+"/git/branches/delete/preview?name="+url.QueryEscape(name), nil)
+}
+
+func (h *hosted) deleteBranch(t *testing.T, name, fingerprint string) *httptest.ResponseRecorder {
+	t.Helper()
+	return h.call(t, "POST", testRepo+"/git/branches/delete", map[string]string{"name": name, "fingerprint": fingerprint})
+}
+
+// refsOf lists every ref of the repository in dir with its object.
+func refsOf(t *testing.T, dir string) string {
+	t.Helper()
+	return gitIn(t, dir, "for-each-ref", "--format=%(objectname) %(refname)")
+}
+
+// Scenarios: Delete a branch with unique commits, Changed deletion preview.
+func TestDeleteALocalBranch(t *testing.T) {
+	h := newOpened(t)
+	checkout := func(name string) {
+		t.Helper()
+		ok[statusBody](t, h.call(t, "POST", testRepo+"/git/checkout", map[string]string{"branch": name}))
+	}
+	// side has two commits of its own and one it shares with the local branch keep.
+	ok[statusBody](t, h.call(t, "POST", testRepo+"/git/branches", map[string]string{"name": "side"}))
+	write(t, h.clone, "main.tex", "shared\n")
+	h.commit(t, "Shared")
+	gitIn(t, h.clone, "branch", "keep")
+	write(t, h.clone, "main.tex", "first of its own\n")
+	h.commit(t, "First of its own")
+	first := h.head(t)
+	write(t, h.clone, "main.tex", "second of its own\n")
+	h.commit(t, "Second of its own")
+	second := h.head(t)
+	gitIn(t, h.clone, "config", "branch.side.remote", "origin")
+	gitIn(t, h.clone, "config", "branch.side.merge", "refs/heads/side")
+
+	wantError(t, h.deletePreview(t, "side"), 409, "current")
+	checkout("main")
+	for _, name := range []string{"", "-f", "has space", "a..b", "ends.lock"} {
+		wantError(t, h.deletePreview(t, name), 400, "bad_branch")
+		wantError(t, h.deleteBranch(t, name, "x"), 400, "bad_branch")
+	}
+	wantError(t, h.deletePreview(t, "nowhere"), 404, "not_found")
+	wantError(t, h.deleteBranch(t, "nowhere", "x"), 404, "not_found")
+	wantError(t, h.deletePreview(t, "main"), 409, "current")
+	wantError(t, h.deleteBranch(t, "side", ""), 400, "bad_request")
+
+	p := ok[deletePreviewBody](t, h.deletePreview(t, "side"))
+	if p.Name != "side" || p.Head != second || !slices.Equal(shas(p.Commits), []string{second, first}) || p.Fingerprint == "" {
+		t.Fatalf("preview: %+v", p)
+	}
+	if c := p.Commits[0]; c.Subject != "Second of its own" || c.Date == "" || c.AuthorName == "" || c.Parents == nil || c.Refs == nil {
+		t.Errorf("a preview commit: %+v", c)
+	}
+
+	// The branch gains a commit after the preview: nothing is deleted.
+	late := gitIn(t, h.clone, "commit-tree", "-p", second, "-m", "Late", second+"^{tree}")
+	gitIn(t, h.clone, "update-ref", "refs/heads/side", late)
+	wantError(t, h.deleteBranch(t, "side", p.Fingerprint), 409, "changed")
+	if !hasRef(h.clone, "refs/heads/side") {
+		t.Fatal("a changed preview deleted the branch")
+	}
+	fresh := ok[deletePreviewBody](t, h.deletePreview(t, "side"))
+	if fresh.Head != late || len(fresh.Commits) != 3 || fresh.Fingerprint == p.Fingerprint {
+		t.Fatalf("fresh preview: %+v", fresh)
+	}
+
+	github := refsOf(t, h.bare)
+	st := ok[statusBody](t, h.deleteBranch(t, "side", fresh.Fingerprint))
+	if st.Branch == nil || *st.Branch != "main" {
+		t.Fatalf("status after the deletion: %+v", st)
+	}
+	if hasRef(h.clone, "refs/heads/side") || !hasRef(h.clone, "refs/heads/keep") {
+		t.Fatal("the deletion removed the wrong branches")
+	}
+	if cfg, _ := exec.Command("git", "-C", h.clone, "config", "--get-regexp", `^branch\.side\.`).Output(); len(cfg) != 0 {
+		t.Errorf("tracking configuration left behind: %s", cfg)
+	}
+	if refsOf(t, h.bare) != github {
+		t.Error("the deletion changed GitHub")
+	}
+}
+
+// squashMerge has the author squash-merge the pull request for branch on
+// GitHub and delete the branch there, as the merge button does.
+func (h *hosted) squashMerge(t *testing.T, branch string) {
+	t.Helper()
+	author := h.authorClone(t)
+	gitIn(t, author, "merge", "--quiet", "--squash", "origin/"+branch)
+	gitIn(t, author, "commit", "--quiet", "-m", "Squashed "+branch)
+	gitIn(t, author, "push", "--quiet", "origin", "main")
+	gitIn(t, author, "push", "--quiet", "origin", "--delete", branch)
+}
+
+// Scenarios: Delete a squash-merged branch, Finished after a squash merge,
+// Unsent work keeps a branch, Finished current branch (the server's part).
+func TestFinishedBranches(t *testing.T) {
+	h := newOpened(t)
+	finished := func(when string) finishedStatus {
+		t.Helper()
+		st := ok[finishedStatus](t, h.call(t, "GET", testRepo+"/git/status", nil))
+		if st.Finished == nil || st.DefaultBranch == nil || *st.DefaultBranch != "main" {
+			t.Fatalf("%s: finished %v, defaultBranch %v", when, st.Finished, st.DefaultBranch)
+		}
+		return st
+	}
+	if f := *finished("a clean clone").Finished; len(f) != 0 {
+		t.Fatalf("finished on a clean clone: %+v", f)
+	}
+
+	sent, pullRef := h.sendForReview(t) // on branch edits
+	h.squashMerge(t, "edits")
+	if f := *finished("before the check").Finished; len(f) != 0 {
+		t.Fatalf("finished before a check: %+v", f)
+	}
+	ok[statusBody](t, h.call(t, "POST", testRepo+"/git/fetch", nil))
+	if !hasRef(h.clone, pullRef) || hasRef(h.clone, "refs/remotes/origin/edits") {
+		t.Fatal("the check did not bring the pull request and prune the branch")
+	}
+	st := finished("the current branch, squash-merged")
+	if f := *st.Finished; len(f) != 1 || f[0].Name != "edits" || f[0].Pull != 1 || f[0].Fingerprint == "" {
+		t.Fatalf("finished: %+v", f)
+	}
+	fingerprint := (*st.Finished)[0].Fingerprint
+
+	// Uncommitted changes keep the current branch off the list.
+	write(t, h.clone, "notes.tex", "not committed\n")
+	if f := *finished("with uncommitted changes").Finished; len(f) != 0 {
+		t.Fatalf("finished with uncommitted changes: %+v", f)
+	}
+	os.Remove(filepath.Join(h.clone, "notes.tex"))
+
+	// So does a commit that was never sent.
+	write(t, h.clone, "main.tex", "unsent\n")
+	h.commit(t, "Unsent")
+	if f := *finished("with an unsent commit").Finished; len(f) != 0 {
+		t.Fatalf("finished with an unsent commit: %+v", f)
+	}
+	wantError(t, h.deletePreview(t, "edits"), 409, "current")
+	gitIn(t, h.clone, "reset", "--quiet", "--hard", sent)
+
+	// The default branch, then the deletion with the fingerprint from status.
+	ok[statusBody](t, h.call(t, "POST", testRepo+"/git/checkout", map[string]string{"branch": *st.DefaultBranch}))
+	p := ok[deletePreviewBody](t, h.deletePreview(t, "edits"))
+	if p.Head != sent || len(p.Commits) != 0 || p.Fingerprint != fingerprint {
+		t.Fatalf("preview of the squash-merged branch: %+v, status fingerprint %s", p, fingerprint)
+	}
+	if f := *finished("on main").Finished; len(f) != 1 || f[0].Fingerprint != fingerprint {
+		t.Fatalf("finished from main: %+v", f)
+	}
+	github := refsOf(t, h.bare)
+	after := ok[finishedStatus](t, h.deleteBranch(t, "edits", fingerprint))
+	if after.Finished == nil || len(*after.Finished) != 0 || hasRef(h.clone, "refs/heads/edits") {
+		t.Fatalf("after removal: %+v", after.Finished)
+	}
+	if cfg, _ := exec.Command("git", "-C", h.clone, "config", "--get-regexp", `^branch\.edits\.`).Output(); len(cfg) != 0 {
+		t.Errorf("tracking configuration left behind: %s", cfg)
+	}
+	if refsOf(t, h.bare) != github {
+		t.Error("removing a finished branch changed GitHub")
+	}
+
+	// Without origin/HEAD the default branch is unknown.
+	gitIn(t, h.clone, "remote", "set-head", "origin", "--delete")
+	if st := ok[finishedStatus](t, h.call(t, "GET", testRepo+"/git/status", nil)); st.DefaultBranch != nil {
+		t.Errorf("defaultBranch without origin/HEAD: %q", *st.DefaultBranch)
 	}
 }

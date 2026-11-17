@@ -18,13 +18,17 @@ import {
 	type Commit,
 	type CommitDetail,
 	createPull,
+	type DeletePreview,
 	type DiscardPreview,
 	type FileStatus,
+	type FinishedBranch,
 	type GitStatus,
 	gitCheckout,
 	gitCommit,
 	gitCommitDetail,
 	gitCreateBranch,
+	gitDeleteBranch,
+	gitDeletePreview,
 	gitDiff,
 	gitDiscard,
 	gitDiscardPreview,
@@ -42,7 +46,7 @@ import type { RepoState } from "../api/repo";
 import { layoutGraph } from "../core/graph/graph";
 import { branchChoices, type RefChip, refChips } from "../core/graph/refs";
 import { DiffView } from "./Diff";
-import { failure, isCode } from "./errors";
+import { explain, failure, isCode } from "./errors";
 
 export const statusWords: Record<FileStatus["status"], string> = {
 	modified: "changed",
@@ -270,6 +274,33 @@ export function GitPanel({
 			() => gitMergeAbort(id),
 			() => "The merge was undone. Your copy is as it was before Get latest.",
 		);
+	/** Removes a finished branch from this computer, never from GitHub. The
+	 * current one is left for the default branch first. */
+	const removeFinished = (f: FinishedBranch) => {
+		const target = f.name === status?.branch ? status.defaultBranch : null;
+		const gone = `${f.name} was removed from this computer. GitHub was not changed.`;
+		return act(
+			"remove",
+			async () => {
+				if (!target) return gitDeleteBranch(id, f.name, f.fingerprint);
+				await gitCheckout(id, target);
+				try {
+					return await gitDeleteBranch(id, f.name, f.fingerprint);
+				} catch (error) {
+					throw new ApiError(
+						0,
+						"not_removed",
+						`You are now on branch ${target}, but branch ${f.name} was not removed from this computer. ${explain(error)}`,
+						{},
+					);
+				}
+			},
+			() =>
+				target
+					? `You are now on branch ${target}, and branch ${gone}`
+					: `Branch ${gone}`,
+		);
+	};
 	const openDialog = async (name: DialogName) => {
 		setProblem(null);
 		setDone("");
@@ -400,6 +431,37 @@ export function GitPanel({
 					computer, and the author can give your account write access on GitHub.
 				</p>
 			)}
+			{status && status.finished.length > 0 && (
+				<ul className="finished-list" aria-label="Finished branches">
+					{status.finished.map((f) => {
+						const current = f.name === status.branch;
+						return (
+							<li key={f.name} className="git-note">
+								<span>
+									Branch <b>{f.name}</b> is finished. Its GitHub branch was
+									removed, and everything on it is kept on GitHub
+									{f.pull > 0 ? `, kept in pull request #${f.pull}` : ""}.
+									Removing it here changes nothing on GitHub.
+									{current &&
+										(status.defaultBranch
+											? ` You are on it, so Remove first switches to branch ${status.defaultBranch}.`
+											: " Switch to another branch to remove it.")}
+								</span>
+								{!(current && !status.defaultBranch) && (
+									<button
+										type="button"
+										disabled={!!busy}
+										onClick={() => removeFinished(f)}
+										aria-label={`Remove branch ${f.name}`}
+									>
+										{busy === "remove" && <Spinner />}Remove
+									</button>
+								)}
+							</li>
+						);
+					})}
+				</ul>
+			)}
 			{status?.merging && (
 				<MergeBanner
 					conflicts={status.conflicts}
@@ -492,6 +554,12 @@ export function GitPanel({
 					onDone={(s) => {
 						setStatus(s);
 						closeDialog(`You are now on branch ${s.branch}.`);
+					}}
+					onDeleted={(s, name) => {
+						setStatus(s);
+						closeDialog(
+							`Branch ${name} was deleted from this computer. GitHub was not changed.`,
+						);
 					}}
 					onUnclean={(u) => {
 						setDialog(null);
@@ -1162,6 +1230,7 @@ function BranchDialog({
 	flush,
 	onAuthLost,
 	onDone,
+	onDeleted,
 	onUnclean,
 	onClose,
 }: {
@@ -1171,6 +1240,8 @@ function BranchDialog({
 	flush: () => Promise<boolean>;
 	onAuthLost: () => void;
 	onDone: (status: GitStatus) => void;
+	/** The local branch `name` was deleted. */
+	onDeleted: (status: GitStatus, name: string) => void;
 	/** A switch met uncommitted changes: the panel shows the move prompt. */
 	onUnclean: (unclean: Unclean) => void;
 	onClose: () => void;
@@ -1178,6 +1249,7 @@ function BranchDialog({
 	const [name, setName] = useState("");
 	const [problem, setProblem] = useState<Problem | null>(null);
 	const [busy, setBusy] = useState(false);
+	const [deleting, setDeleting] = useState<string | null>(null);
 	const choices = branchChoices(commits).filter((b) => b.name !== current);
 
 	const run = async (action: () => Promise<GitStatus>) => {
@@ -1267,6 +1339,17 @@ function BranchDialog({
 							>
 								Switch
 							</button>
+							{b.local && (
+								<button
+									type="button"
+									className="quiet danger"
+									disabled={busy}
+									onClick={() => setDeleting(b.name)}
+									aria-label={`Delete ${b.name}…`}
+								>
+									Delete…
+								</button>
+							)}
 						</li>
 					))}
 				</ul>
@@ -1277,6 +1360,15 @@ function BranchDialog({
 					Close
 				</button>
 			</div>
+			{deleting && (
+				<DeleteBranchDialog
+					id={id}
+					name={deleting}
+					onAuthLost={onAuthLost}
+					onDeleted={(s) => onDeleted(s, deleting)}
+					onClose={() => setDeleting(null)}
+				/>
+			)}
 		</Modal>
 	);
 }
@@ -1655,6 +1747,110 @@ function DiscardDialog({
 					</div>
 				</>
 			)}
+		</Modal>
+	);
+}
+
+/** Confirms deleting a local branch, listing the commits only it holds. */
+function DeleteBranchDialog({
+	id,
+	name,
+	onAuthLost,
+	onDeleted,
+	onClose,
+}: {
+	id: RepoId;
+	name: string;
+	onAuthLost: () => void;
+	onDeleted: (status: GitStatus) => void;
+	onClose: () => void;
+}) {
+	const [preview, setPreview] = useState<DeletePreview | null>(null);
+	const [problem, setProblem] = useState<Problem | null>(null);
+	const [busy, setBusy] = useState(false);
+
+	const fail = useCallback(
+		(error: unknown) => {
+			if (isCode(error, "auth_required")) onAuthLost();
+			else setProblem(problemOf(error));
+		},
+		[onAuthLost],
+	);
+	useEffect(() => {
+		gitDeletePreview(id, name).then(setPreview, fail);
+	}, [id, name, fail]);
+
+	const confirm = async () => {
+		if (!preview) return;
+		setProblem(null);
+		setBusy(true);
+		try {
+			onDeleted(await gitDeleteBranch(id, name, preview.fingerprint));
+		} catch (error) {
+			if (isCode(error, "changed")) {
+				setProblem({
+					text: "The branch changed after this list was made, so nothing was deleted. The list below is up to date: check it again.",
+				});
+				gitDeletePreview(id, name).then(setPreview, fail);
+			} else fail(error);
+		} finally {
+			setBusy(false);
+		}
+	};
+
+	const n = preview?.commits.length ?? 0;
+	return (
+		<Modal title={`Delete branch ${name}?`} wide busy={busy} onClose={onClose}>
+			{problem && <ProblemBox problem={problem} />}
+			{!preview ? (
+				!problem && (
+					<p className="muted">
+						<Spinner /> Looking for commits only this branch has…
+					</p>
+				)
+			) : n === 0 ? (
+				<p>
+					Every commit on <b>{name}</b> is kept elsewhere, on another branch or
+					on GitHub, so deleting it loses nothing.
+				</p>
+			) : (
+				<>
+					<p>
+						{n === 1 ? "This commit exists" : `These ${n} commits exist`} only
+						on <b>{name}</b>. Deleting the branch means{" "}
+						{n === 1 ? "it" : "they"} will be <b>lost from this computer</b>:
+					</p>
+					<ul className="erase-list" aria-label="Commits that will be lost">
+						{preview.commits.map((c) => (
+							<li key={c.sha}>
+								<span className="erase-subject">{c.subject}</span>
+								<span className="muted">
+									<When iso={c.date} /> ·{" "}
+									<code title={c.sha}>{c.sha.slice(0, 7)}</code>
+								</span>
+							</li>
+						))}
+					</ul>
+				</>
+			)}
+			<p className="help">
+				This deletes the branch on this computer only. GitHub is not changed.
+			</p>
+			<div className="row end">
+				<button type="button" onClick={onClose} disabled={busy}>
+					Cancel
+				</button>
+				{preview && (
+					<button
+						type="button"
+						className="danger-button"
+						disabled={busy}
+						onClick={confirm}
+					>
+						{busy && <Spinner />}Delete branch
+					</button>
+				)}
+			</div>
 		</Modal>
 	);
 }
