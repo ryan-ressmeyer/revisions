@@ -16,13 +16,13 @@ The old repository is read-only evidence of earlier choices. It is not a feature
 
 **Sharing.** The author pushes a commit and sends the collaborator a GitHub URL for a commit, branch, or pull request [1, Q2, Q26].
 
-**Opening.** The collaborator pastes the URL into Revisions. On first use, Revisions clones the repository to the collaborator's machine. If a clone already exists, Revisions checks out the shared commit. If that clone has uncommitted work, Revisions refuses and explains why [1, Q3, Q27]. Revisions finds the manuscript's entry file automatically, and the collaborator can choose another one [1, Q36].
+**Opening.** The collaborator pastes the URL into Revisions. On first use, Revisions clones the repository to the collaborator's machine. If a clone already exists, Revisions checks out the shared commit. If that clone has uncommitted work, Revisions asks whether to commit or discard it first [1, Q3; 15]. Revisions finds the manuscript's entry file automatically, and the collaborator can choose another one [1, Q36].
 
 **Reading and editing.** The screen splits into a read-only PDF and an editable inline view, in the style of Overleaf. Clicking in either pane jumps to the matching location in the other through SyncTeX [1, Q37]. The inline view renders common LaTeX constructs as formatted text, and anything it does not recognize stays visible as editable raw source. Moving the cursor into a rendered construct reveals its source [1, Q9–Q10]. Edits autosave. The collaborator rebuilds the PDF with a button or a keyboard shortcut. An out-of-date warning appears while the PDF lags the source, and a failed build leaves the last good PDF in place [1, Q16].
 
 **Commenting and tracking changes.** The collaborator highlights text and attaches a comment. The comment lives in the LaTeX source as a `changes` macro, and a Resolve button removes it [1, Q6, Q30]. Tracked changes are off by default. When the collaborator turns them on for a session, edits are recorded as `changes` markup, and each tracked change has Accept and Reject buttons. Accept all and Reject all apply to every tracked change [1, Q8, Q38].
 
-**Sending changes back.** A GitKraken-style commit graph shows local and remote history. Within the permissions of their own GitHub account, the collaborator can review diffs, commit, pull, push, create or switch branches, open a pull request, force-push, and discard changes [1, Q11–Q12, Q28]. Force-push and discard each show what they will destroy and require one confirmation [1, Q29]. Any commit in the history can be viewed as a read-only snapshot, from which the collaborator goes back to their branch or starts a new one [9].
+**Sending changes back.** A GitKraken-style commit graph shows local and remote history. Within the permissions of their own GitHub account, the collaborator can review diffs, commit, get the latest changes, send, create, switch, or delete branches, open a pull request, force-push, and discard changes [1, Q11–Q12, Q28; 15]. Force-push and discard each show what they will destroy and require one confirmation [1, Q29]. Any commit in the history can be viewed as a read-only snapshot, from which the collaborator goes back to their branch or starts a new one [9]. Revisions checks GitHub for co-authors' changes and offers to remove local branches that a merged pull request has finished. `specs/git-workflow.md` describes these journeys in full [15].
 
 **Installing.** The collaborator follows a written page for macOS, Linux, or Windows that installs Git and a TeX distribution and then pastes one command. The command downloads Revisions from the latest GitHub Release of the public repository, which is MIT licensed, and puts it where the platform's app launcher finds it [9]. If `latexmk` is missing, Revisions guides them to install MacTeX, MiKTeX, or TeX Live [1, Q21, Q34]. When a new version is released, Revisions says so on its own screens, and one button installs it and restarts Revisions in the same tab [12].
 
@@ -60,28 +60,7 @@ The old repository is read-only evidence of earlier choices. It is not a feature
 
 ## Requirements
 
-### Requirement: Open a shared GitHub URL
-
-Revisions SHALL accept a GitHub commit, branch, or pull-request URL and bring a local clone to the referenced commit. It SHALL clone the repository when no local clone exists.
-
-#### Scenario: First open
-
-- WHEN a collaborator with no local clone opens a shared commit URL
-- THEN Revisions clones the repository to the collaborator's machine and checks out that commit
-
-#### Scenario: Existing clone
-
-- WHEN a collaborator with a clean local clone opens a URL for a different commit
-- THEN Revisions fetches and checks out the shared commit
-
-### Requirement: Refuse to switch over uncommitted work
-
-Revisions SHALL refuse to open a different commit while the local clone has uncommitted changes, and SHALL explain why.
-
-#### Scenario: Dirty clone
-
-- WHEN the local clone has uncommitted edits and the collaborator opens a URL for another commit
-- THEN Revisions leaves the working tree unchanged and explains that the uncommitted work must be committed or discarded first
+Requirements for opening a shared URL, moving with uncommitted work, viewing earlier versions, receiving and sending changes, pull requests, branches, saves around Git operations, and destructive Git operations are in `specs/git-workflow.md`.
 
 ### Requirement: Entry-file selection
 
@@ -470,7 +449,7 @@ The local server SHALL validate the `Host` header and the request `Origin`, and 
 
 ### Requirement: GitHub sign-in
 
-Collaborators SHALL sign in with their own GitHub account through OAuth. GitHub permissions SHALL decide which operations they can perform. Sign-in SHALL use the OAuth device flow, which needs no client secret. The complete credential SHALL be stored in the operating-system keychain when one is available [7]. Revisions SHALL retain refresh tokens and expiry times when GitHub supplies them, accept older plain-token storage, and renew expiring credentials on demand, with one renewal at a time. It SHALL NOT request `offline_access`, force expiry, or run a background keepalive [13–14].
+Collaborators SHALL sign in with their own GitHub account through OAuth. GitHub permissions SHALL decide which operations they can perform. Sign-in SHALL use the OAuth device flow, which needs no client secret. The complete credential SHALL be stored in the operating-system keychain when one is available [7]. Revisions SHALL retain refresh tokens and expiry times when GitHub supplies them, accept older plain-token storage, and renew expiring credentials on demand, with one renewal at a time. It SHALL NOT request `offline_access`, force expiry, or run a background keepalive [13–14]. The periodic check for changes on GitHub is an ordinary request that renews a credential only when it needs one, not a keepalive [15].
 
 A rejected sign-in SHALL clear stale identity and permission caches and show a persistent explanation with Reconnect GitHub. Reconnect SHALL attempt renewal when possible and otherwise offer the one-time-code flow in place. An old request SHALL NOT invalidate newer credentials. Offline, server, permission, and credential-storage errors SHALL be distinguished from proven unauthorized responses; transient failures SHALL NOT discard credentials. An environment token override SHALL explain that it must be replaced or removed and Revisions restarted, rather than offer a futile sign-in [13].
 
@@ -521,63 +500,6 @@ Home and the open project SHALL stay mounted through sign-out, auth loss, reconn
 - WHEN an environment token overrides sign-in and the user attempts reconnect
 - THEN Revisions explains how to replace or remove the override and restart, without starting a device flow
 
-### Requirement: Git operations
-
-Revisions SHALL offer viewing changes and diffs, commit, pull, push, create or switch branch, open a pull request, force-push, and discard changes, each within the collaborator's GitHub permissions. It SHALL present history as a GitKraken-style commit graph. Merge conflicts SHALL be resolved in the raw editor.
-
-#### Scenario: Open a pull request
-
-- WHEN a collaborator with push access to a branch commits, pushes, and chooses Open PR
-- THEN Revisions creates the pull request on GitHub and shows it in the commit graph
-
-#### Scenario: Branch removed on GitHub
-
-- WHEN the collaborator's branch was deleted on GitHub, for example after its pull request was closed, and they choose Get latest
-- THEN Revisions leaves the working tree unchanged, says in plain language that the branch was removed from GitHub, and offers Send to put it back
-
-### Requirement: View an earlier version
-
-A commit selected in the history SHALL offer View this version, which puts the clone on that commit as a snapshot (a detached HEAD), so the editor shows the files as they were and a build compiles that version. Revisions SHALL refuse while there are uncommitted changes, as it refuses to switch branches. While on a snapshot, the project SHALL show a banner that names the version by its date and subject, says in plain language that it cannot be changed here, and offers Back to the branch most recently left, or to the default branch when there is none, and Start a branch from this version. The editor SHALL be read-only on a snapshot and the server SHALL refuse saves there, whether the snapshot came from the history or from a commit URL. A PDF built from another version SHALL be marked out of date. Revisions SHALL NOT restore an earlier version onto a branch or rewrite history [9].
-
-#### Scenario: View an earlier version
-
-- WHEN the user selects an earlier commit in the history and chooses View this version
-- THEN the editor shows the files as they were at that commit, refuses edits, and a banner names the version and offers the way back
-
-#### Scenario: Back to the branch
-
-- WHEN the user chooses Back to the branch in the snapshot banner
-- THEN the clone is on that branch again and the editor accepts edits
-
-#### Scenario: Branch from an earlier version
-
-- WHEN the user chooses Start a branch from this version and names the branch
-- THEN a new branch starts at that commit and the editor accepts edits
-
-#### Scenario: Uncommitted work blocks viewing
-
-- WHEN the clone has uncommitted changes and the user chooses View this version
-- THEN Revisions leaves the working tree unchanged and lists the changes that must be committed or discarded first
-
-#### Scenario: PDF from another version
-
-- WHEN the PDF was built from one version and the user moves to another
-- THEN the PDF view shows the out-of-date warning
-
-### Requirement: Destructive-operation confirmation
-
-Force-push SHALL list the remote commits it will erase and SHALL use `--force-with-lease`. Discard SHALL show the diff it will remove. Each SHALL require one explicit confirmation.
-
-#### Scenario: Force-push
-
-- WHEN the user chooses force-push
-- THEN Revisions lists the remote commits that will be erased and pushes with `--force-with-lease` only after confirmation
-
-#### Scenario: Discard
-
-- WHEN the user chooses discard
-- THEN Revisions shows the diff to be removed and discards it only after confirmation
-
 ## Alternatives considered
 
 **Web-first with server-side TeX.** The user chose this first [1, Q5]. It was reversed because the user does not want to operate a compile server, and local compilation keeps builds available without depending on a hosted service [1, Q17–Q19].
@@ -596,7 +518,7 @@ Force-push SHALL list the remote commits it will erase and SHALL use `--force-wi
 
 **Storage-backed durable drafts.** Redraft kept failed saves in browser storage tied to session and snapshot identity [2]. Replaced by a leave-page warning and showing rejected text for copying [1, Q22].
 
-**Auto-stash or WIP commit when switching commits.** Rejected in favor of refusing and explaining [1, Q27].
+**Auto-stash or WIP commit when switching commits.** Rejected in favor of refusing and explaining [1, Q27]. Refusing was later replaced by a prompt that commits or discards and then switches, and stashes were rejected again; see `specs/git-workflow.md` [15].
 
 **Backup refs for force-push and discard.** Rejected in favor of confirmation that shows the consequences [1, Q29].
 
@@ -635,3 +557,4 @@ Redraft's OpenIrisDPI trust profile, protected objects, and separate Source View
 - [12] `notes/feedback-release-01.md`. Feedback on the first release and the owner's choice of the hybrid for comments where a margin note cannot go, 2026-11-12.
 - [13] Owner's approved GitHub credential renewal and in-place reconnection plan, 2026-11-13, following a warm cached sign-in whose token GitHub rejected with 401.
 - [14] GitHub OAuth App authorization, expiring access tokens and device-flow refresh: https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps#expiring-access-tokens; token expiry and revocation: https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/token-expiration-and-revocation.
+- [15] `notes/grill-git-workflow-01.md`. Git workflow interview, 2026-11-16 to 2026-11-17, and `specs/git-workflow.md`, which it produced.

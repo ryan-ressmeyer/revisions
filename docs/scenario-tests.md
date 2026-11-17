@@ -1,19 +1,6 @@
 # Scenario tests
 
-Every Scenario in `specs/overview.md`, grouped by Requirement, with the automated test that covers it. Replace `pending` with the test when you write it: a Go test as `path/file_test.go: TestName`, a Vitest or Playwright test as `path/file.test.ts: "test title"`.
-
-## Open a shared GitHub URL
-
-| Scenario | Test |
-|---|---|
-| First open | `internal/server/routes_auth_test.go: TestOpenFirstOpen`; `web/e2e/start.spec.ts: "First open: a pasted link opens the entry file in the editor"` |
-| Existing clone | `internal/server/routes_auth_test.go: TestOpenExistingClone` |
-
-## Refuse to switch over uncommitted work
-
-| Scenario | Test |
-|---|---|
-| Dirty clone | `internal/server/routes_auth_test.go: TestOpenDirtyClone`; `web/e2e/start.spec.ts: "Dirty clone: refuses to switch, explains why, and offers the copy as it is"` |
+Every Scenario in `specs/overview.md` and then `specs/git-workflow.md`, grouped by Requirement, with the automated test that covers it. Replace `pending` with the test when you write it: a Go test as `path/file_test.go: TestName`, a Vitest or Playwright test as `path/file.test.ts: "test title"`.
 
 ## Entry-file selection
 
@@ -206,22 +193,104 @@ Every Scenario in `specs/overview.md`, grouped by Requirement, with the automate
 | Credential storage failure | `internal/server/auth_recovery_test.go: TestCredentialReadErrorsAndEnvironmentOverride`, `TestRefreshStorageFailureNeverClaimsDurableSuccess`, `TestFailedSignOutDoesNotUnblockConsumedRefreshPair`, `TestExplicitReconnectRevalidatesDurablyRecoveredPair`; `internal/settings/token_test.go: TestTokenStoreDoesNotHideReadFailures`, `TestTokenStoreFileShadowsStaleKeychain`, `TestFileSignOutDoesNotNeedAnInactiveKeychain`, `TestActiveKeychainDeletionFailureIsSurfacedAndMasked`, `TestCredentialStagingSurvivesKeychainFailure`, `TestFailedKeychainMigrationCleanupRetainsCompleteRecord` |
 | Environment credential override | `internal/server/auth_recovery_test.go: TestCredentialReadErrorsAndEnvironmentOverride`; `internal/server/routes_auth_test.go: TestOpenNeedsSignInAndAGoodURL`; `web/e2e/auth-recovery.spec.ts: "A rejected override explains configuration without offering a sign-in loop"` |
 
-## Git operations
+## Open a shared GitHub URL
+
+Requirements from here on are in `specs/git-workflow.md`.
 
 | Scenario | Test |
 |---|---|
-| Open a pull request | `internal/server/routes_git_test.go: TestOpenAPullRequest`; `web/e2e/git.spec.ts: "Open a pull request: a branch is sent and its pull request shows in the graph"` |
-| Branch removed on GitHub | `internal/server/routes_git_test.go: TestBranchRemovedOnGitHub`; `web/e2e/git.spec.ts: "Branch removed on GitHub: Get latest explains it and Send puts it back"` |
+| First open | `internal/server/routes_auth_test.go: TestOpenFirstOpen`; `web/e2e/start.spec.ts: "First open: a pasted link opens the entry file in the editor"` |
+| Existing clone | `internal/server/routes_auth_test.go: TestOpenExistingClone` |
+| Commit link after newer pushes | `pending` |
+
+## Uncommitted work before a move
+
+| Scenario | Test |
+|---|---|
+| Dirty clone | `pending` |
+| View with uncommitted changes | `pending` |
+| Commit and move | `pending` |
+| Discard and move | `pending` |
+| Cancel | `pending` |
+| Move fails after a commit | `pending` |
+| Unfinished merge | `pending` |
 
 ## View an earlier version
 
 | Scenario | Test |
 |---|---|
-| View an earlier version | `internal/server/routes_git_test.go: TestViewAnEarlierVersion`; `web/e2e/git.spec.ts: "View this version: an earlier version is read-only, builds, and the banner goes back to the branch"` |
-| Back to the branch | `internal/server/routes_git_test.go: TestViewAnEarlierVersion`; `web/e2e/git.spec.ts: "View this version: an earlier version is read-only, builds, and the banner goes back to the branch"` |
-| Branch from an earlier version | `internal/server/routes_git_test.go: TestViewAnEarlierVersion`; `web/e2e/git.spec.ts: "Snapshot: a commit link opens a read-only snapshot, and a branch from it can be edited and committed"` |
-| Uncommitted work blocks viewing | `internal/server/routes_git_test.go: TestViewAnEarlierVersion`; `web/e2e/git.spec.ts: "View this version: refused while there are uncommitted changes"` |
+| View an earlier version | `pending` |
+| Read-only reason | `pending` |
+| Back to the branch | `pending` |
+| Branch from an earlier version | `pending` |
+| Branch age does not lock editing | `pending` |
+| Encoding read-only reason | `pending` |
 | PDF from another version | `internal/server/routes_build_test.go: TestPDFFromAnotherVersionIsOutOfDate`; `web/e2e/git.spec.ts: "View this version: an earlier version is read-only, builds, and the banner goes back to the branch"` |
+
+## Get latest
+
+| Scenario | Test |
+|---|---|
+| Get latest with uncommitted changes | `pending` |
+| Conflict | `pending` |
+| Branch removed on GitHub | `internal/server/routes_git_test.go: TestBranchRemovedOnGitHub`; `web/e2e/git.spec.ts: "Branch removed on GitHub: Get latest explains it and Send puts it back"` |
+
+## Check GitHub for changes
+
+| Scenario | Test |
+|---|---|
+| Check on opening | `pending` |
+| Periodic check | `pending` |
+| GitHub unreachable | `pending` |
+
+## Where the work stands
+
+| Scenario | Test |
+|---|---|
+| Uncommitted changes | `pending` |
+| Unsent commits | `pending` |
+
+## Send and open a pull request
+
+| Scenario | Test |
+|---|---|
+| Open a pull request | `pending` |
+| Pull request from the shared branch | `pending` |
+| Nothing to propose | `pending` |
+| Pull request step fails | `pending` |
+| No write access | `pending` |
+
+## Delete a local branch
+
+| Scenario | Test |
+|---|---|
+| Delete a branch with unique commits | `pending` |
+| Delete a squash-merged branch | `pending` |
+| Changed deletion preview | `pending` |
+
+## Tidy finished branches
+
+| Scenario | Test |
+|---|---|
+| Finished after a squash merge | `pending` |
+| Unsent work keeps a branch | `pending` |
+| Finished current branch | `pending` |
+
+## Saves around Git operations
+
+| Scenario | Test |
+|---|---|
+| Discard while another window types | `pending` |
+| Save during View this version | `pending` |
+| Leave with pending text | `pending` |
+| Escape while working | `pending` |
+| Save during a slow fetch | `pending` |
+
+## Git operations
+
+| Scenario | Test |
+|---|---|
+| Commit | `pending` |
 
 ## Destructive-operation confirmation
 

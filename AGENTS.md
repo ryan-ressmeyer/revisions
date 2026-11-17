@@ -17,7 +17,7 @@ Revisions is a rewrite of `~/repos/redraft-editor/`. Version 1 is released from 
 - The server owns bytes, processes, Git, and GitHub. `web/src/core` owns every LaTeX rule and imports nothing from the DOM, React, or CodeMirror. `web/src/ui` holds no LaTeX rules.
 - The HTTP contract in `specs/architecture.md` is binding. Change the contract and the code in the same commit.
 - Write the failing test first. Test behaviour through public interfaces with real Git repositories and real files; avoid mocks.
-- Every Scenario in `specs/overview.md` has an automated test listed in `docs/scenario-tests.md`.
+- Every Scenario in `specs/overview.md` and `specs/git-workflow.md` has an automated test listed in `docs/scenario-tests.md`.
 - Prefer the smallest change that works: standard library first, no speculative abstraction, no configuration for values that never change. Mark a deliberate shortcut with a `ponytail:` comment naming its ceiling and upgrade path.
 - Never simplify away path containment, request hardening, stale-write rejection, or byte preservation.
 
