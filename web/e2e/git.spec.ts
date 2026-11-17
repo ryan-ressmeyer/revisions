@@ -138,7 +138,7 @@ test("Commit: an edit becomes the newest commit in the graph", async ({
 	).toBeVisible();
 	await typeAtStart(page, "% a note for the panel\n");
 	await expect(
-		page.getByRole("button", { name: /Changes & history.*uncommitted/ }),
+		page.getByRole("button", { name: /Changes & history: .*not committed/i }),
 	).toBeVisible();
 
 	const p = await openPanel(page);
@@ -151,7 +151,9 @@ test("Commit: an edit becomes the newest commit in the graph", async ({
 	await commit(page, "Add a note");
 	expect(git(server.paper, "log", "-1", "--format=%s")).toBe("Add a note");
 	await expect(
-		page.getByRole("button", { name: "Changes & history", exact: true }),
+		page.getByRole("button", {
+			name: /^Changes & history(?!.*not committed)/i,
+		}),
 	).toBeVisible();
 	await expect(
 		history(page).getByRole("listitem").first().getByText("main", {

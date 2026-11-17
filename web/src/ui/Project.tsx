@@ -107,6 +107,31 @@ const CHECK_EVERY = 5 * 60_000;
 const LOCKED =
 	"This is an earlier version, so it cannot be changed. Go back to your branch, or start a branch from this version, to edit.";
 
+// ponytail: temporary switch between the top-bar signal variants
+// (?signal=phrase|mark|chip) so the owner can compare them; delete it and the
+// losing variants once the owner picks one.
+const SIGNAL = new URLSearchParams(location.search).get("signal") ?? "phrase";
+
+/**
+ * Where the work stands on this computer, from the state poll: the phrase
+ * (which is also the toggle's accessible state) and the chip's short form.
+ */
+function workStands(dirty: boolean, unsent: number) {
+	const notSent = `${unsent} not sent`;
+	const phrase =
+		dirty && unsent > 0
+			? `Not committed · ${notSent}`
+			: dirty
+				? "Changes not committed"
+				: unsent > 0
+					? `${unsent} commit${unsent === 1 ? "" : "s"} not sent`
+					: "";
+	const chip = [dirty ? "Not committed" : "", unsent > 0 ? notSent : ""]
+		.filter(Boolean)
+		.join(" · ");
+	return { phrase, chip };
+}
+
 /** The editor and the PDF of one repository, side by side. */
 export function ProjectView({
 	id,
@@ -816,6 +841,9 @@ export function ProjectView({
 
 	const [, owner, name] = id.split("/");
 	const branch = repoState?.git.branch;
+	const dirty = repoState?.git.dirty ?? false;
+	const unsent = repoState?.git.unsent ?? 0;
+	const stands = workStands(dirty, unsent);
 	const pdfVersion = Math.max(
 		build?.pdfVersion ?? 0,
 		polledBuild?.pdfVersion ?? 0,
@@ -912,20 +940,40 @@ export function ProjectView({
 						</button>
 					))}
 				</fieldset>
+				{SIGNAL === "chip" && stands.chip && (
+					<span className="work-chip" aria-hidden="true">
+						{stands.chip}
+					</span>
+				)}
 				<button
 					ref={gitButton}
 					type="button"
 					className={`quiet changes-toggle ${gitOpen ? "on" : ""}`}
 					aria-expanded={gitOpen}
+					aria-label={
+						stands.phrase ? `Changes & history: ${stands.phrase}` : undefined
+					}
 					onClick={() => setGitOpen((o) => !o)}
 					title="Commit your changes, send them to GitHub, and see the history"
 				>
-					Changes &amp; history
-					{repoState?.git.dirty && (
-						<>
-							<span className="dot" aria-hidden="true" />
-							<span className="visually-hidden"> (uncommitted changes)</span>
-						</>
+					{SIGNAL === "phrase" && stands.phrase
+						? stands.phrase
+						: "Changes & history"}
+					{SIGNAL === "mark" && dirty && (
+						<span
+							className="dot"
+							aria-hidden="true"
+							title="Changes not committed"
+						/>
+					)}
+					{SIGNAL === "mark" && unsent > 0 && (
+						<span
+							className="count"
+							aria-hidden="true"
+							title={`${unsent} commit${unsent === 1 ? "" : "s"} not sent`}
+						>
+							↑{unsent}
+						</span>
 					)}
 				</button>
 				{running ? (

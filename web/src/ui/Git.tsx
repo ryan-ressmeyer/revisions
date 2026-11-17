@@ -389,9 +389,9 @@ export function GitPanel({
 						title="Send your commits to GitHub (git push)"
 					>
 						{busy === "push" ? <Spinner /> : <Arrow />}Send
-						{(status?.ahead ?? 0) > 0 && (
+						{(status?.unsent ?? 0) > 0 && (
 							<span className="count" aria-hidden="true">
-								{status?.ahead}
+								{status?.unsent}
 							</span>
 						)}
 					</button>
