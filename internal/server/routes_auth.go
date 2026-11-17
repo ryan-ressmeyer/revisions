@@ -614,7 +614,7 @@ func (s *Server) open(w http.ResponseWriter, r *http.Request) {
 		branch, track = fmt.Sprintf("pr-%d", ref.Number), false
 		remote = fmt.Sprintf("refs/remotes/pull/%d", ref.Number)
 		if err := gitx.Fetch(ctx, dir, auth, fmt.Sprintf("+refs/pull/%d/head:%s", ref.Number, remote)); err != nil {
-			s.networkGitFailed(w, r, token, err)
+			s.fetchFailed(w, r, token, err)
 			return
 		}
 	case ref.Kind == host.RefCommit:
