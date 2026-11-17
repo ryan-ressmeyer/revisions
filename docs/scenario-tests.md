@@ -201,7 +201,7 @@ Requirements from here on are in `specs/git-workflow.md`.
 |---|---|
 | First open | `internal/server/routes_auth_test.go: TestOpenFirstOpen`; `web/e2e/start.spec.ts: "First open: a pasted link opens the entry file in the editor"` |
 | Existing clone | `internal/server/routes_auth_test.go: TestOpenExistingClone` |
-| Commit link after newer pushes | `pending` |
+| Commit link after newer pushes | `web/e2e/git.spec.ts: "Commit link after newer pushes: the commit opens as a read-only snapshot, the header explains why and offers the way to edit, and a branch from it can be committed"` |
 
 ## Uncommitted work before a move
 
@@ -219,13 +219,13 @@ Requirements from here on are in `specs/git-workflow.md`.
 
 | Scenario | Test |
 |---|---|
-| View an earlier version | `pending` |
-| Read-only reason | `pending` |
-| Back to the branch | `pending` |
-| Branch from an earlier version | `pending` |
-| Branch age does not lock editing | `pending` |
-| Encoding read-only reason | `pending` |
-| PDF from another version | `internal/server/routes_build_test.go: TestPDFFromAnotherVersionIsOutOfDate`; `web/e2e/git.spec.ts: "View this version: an earlier version is read-only, builds, and the banner goes back to the branch"` |
+| View an earlier version | `web/e2e/git.spec.ts: "View an earlier version: the editor shows the files as they were, refuses edits, and the header reads Read-only: earlier version"` |
+| Read-only reason | `web/e2e/git.spec.ts: "Read-only reason: the header opens a dialog that names the version by date and subject, says why, and offers Return and Start a branch here"` |
+| Back to the branch | `web/e2e/git.spec.ts: "Back to the branch: Return puts the clone on its branch again, and the editor accepts edits"`, `"Back to the branch: with uncommitted changes on a snapshot, Return shows the prompt without Commit, and Discard then returns"` |
+| Branch from an earlier version | `web/e2e/git.spec.ts: "Branch from an earlier version: Start a branch here asks for a name, the branch starts at that commit, and the editor accepts edits"` |
+| Branch age does not lock editing | `web/e2e/git.spec.ts: "Branch age does not lock editing: an old branch, and a branch Get latest advanced, stay editable"` |
+| Encoding read-only reason | `web/e2e/git.spec.ts: "Encoding read-only reason: a file that is not UTF-8 says so beside its name and offers no branch"` |
+| PDF from another version | `internal/server/routes_build_test.go: TestPDFFromAnotherVersionIsOutOfDate`; `web/e2e/git.spec.ts: "PDF from another version: a snapshot builds, and after Return in the header dialog that PDF is out of date"` |
 
 ## Get latest
 

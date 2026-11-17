@@ -55,7 +55,7 @@ export const statusWords: Record<FileStatus["status"], string> = {
 };
 
 const MERGE_MESSAGE = "Combine my changes with the latest from GitHub";
-const UNSAVED =
+export const UNSAVED =
 	"Your latest edits could not be saved, so nothing was done. See the message above the editor.";
 
 interface Problem {
@@ -253,7 +253,7 @@ export function GitPanel({
 				: `View version ${sha.slice(0, 7)}`,
 			run: () => gitViewVersion(id, sha),
 			done: () =>
-				"The editor now shows this version, read-only. The banner above the editor leads back.",
+				"The editor now shows this version, read-only. Click Read-only: earlier version, at the top, to go back or start a branch.",
 		});
 	};
 	const abortMerge = () =>

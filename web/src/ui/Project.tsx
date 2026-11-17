@@ -60,7 +60,15 @@ import { explain, isCode } from "./errors";
 import { FileTree } from "./FileTree";
 import { figureUrl } from "./figures";
 import { loadFile, openFileSync } from "./files";
-import { GitPanel, longDate, Modal, MovePrompt, runMove, Unclean } from "./Git";
+import {
+	GitPanel,
+	longDate,
+	Modal,
+	MovePrompt,
+	runMove,
+	UNSAVED,
+	Unclean,
+} from "./Git";
 import { TexGuidance } from "./Guidance";
 import { type PdfHandle, PdfView } from "./Pdf";
 import {
@@ -185,8 +193,11 @@ export function ProjectView({
 	// A detached HEAD: an earlier version on screen, read-only.
 	const snapshotHead = repoState?.git.branch === null ? repoState.git.head : "";
 	const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+	// The header's dialog on a snapshot.
+	const [versionOpen, setVersionOpen] = useState(false);
 	useEffect(() => {
 		setSnapshot(null);
+		setVersionOpen(false);
 		if (!snapshotHead) return;
 		let live = true;
 		gitStatus(id).then(
@@ -742,7 +753,6 @@ export function ProjectView({
 
 	const [, owner, name] = id.split("/");
 	const branch = repoState?.git.branch;
-	const head = repoState?.git.head.slice(0, 7);
 	const pdfVersion = Math.max(
 		build?.pdfVersion ?? 0,
 		polledBuild?.pdfVersion ?? 0,
@@ -789,11 +799,19 @@ export function ProjectView({
 					<span className="repo-name">
 						{owner}/{name}
 					</span>
-					{repoState && (
-						<span className="muted">
-							{branch ? `on branch ${branch}` : `at version ${head}`}
-						</span>
-					)}
+					{repoState &&
+						(branch ? (
+							<span className="muted where">{`on branch ${branch}`}</span>
+						) : (
+							<button
+								type="button"
+								className="link where read-only-version"
+								onClick={() => setVersionOpen(true)}
+								title="Why this version cannot be changed, and how to edit"
+							>
+								Read-only: earlier version
+							</button>
+						))}
 				</span>
 				{project &&
 					!project.entryFromConfig &&
@@ -877,12 +895,14 @@ export function ProjectView({
 			<div className="notice" role="status" aria-live="polite">
 				{notice}
 			</div>
-			{snapshotHead && (
-				<SnapshotBanner
+			{versionOpen && snapshotHead && (
+				<SnapshotDialog
 					id={id}
 					head={snapshotHead}
 					snapshot={snapshot}
+					flush={flushOpen}
 					onDone={afterGit}
+					onClose={() => setVersionOpen(false)}
 					onAuthLost={onAuthLost}
 				/>
 			)}
@@ -1160,20 +1180,26 @@ export function ProjectView({
 	);
 }
 
-/** Says which earlier version is on screen, and leads back to a branch. */
-function SnapshotBanner({
+/** The header's dialog on a snapshot: which version this is, why it cannot
+ * be changed, and the ways to edit. */
+function SnapshotDialog({
 	id,
 	head,
 	snapshot,
+	flush,
 	onDone,
+	onClose,
 	onAuthLost,
 }: {
 	id: RepoId;
 	head: string;
 	/** null until the status arrives. */
 	snapshot: Snapshot | null;
+	/** Saves pending editor text; false when that failed. */
+	flush: () => Promise<boolean>;
 	/** Called after the checkout moved. */
 	onDone: () => void;
+	onClose: () => void;
 	onAuthLost: () => void;
 }) {
 	const [unclean, setUnclean] = useState<Unclean | null>(null);
@@ -1186,46 +1212,70 @@ function SnapshotBanner({
 		if (naming) input.current?.focus();
 	}, [naming]);
 	const run = async (action: () => Promise<unknown>) => {
-		setBusy(true);
 		setProblem("");
+		if (!(await flush())) {
+			setProblem(UNSAVED);
+			return;
+		}
+		setBusy(true);
 		try {
 			await action();
+			onClose();
 			onDone();
 		} catch (error) {
 			if (error instanceof Unclean) setUnclean(error);
-			else setProblem(explain(error));
+			else {
+				if (isCode(error, "auth_required")) onAuthLost();
+				setProblem(explain(error));
+			}
 		} finally {
 			setBusy(false);
 		}
 	};
 	const back = snapshot?.returnTo;
+
+	if (unclean)
+		return (
+			<MovePrompt
+				id={id}
+				unclean={unclean}
+				onAuthLost={onAuthLost}
+				onMoved={() => {
+					onClose();
+					onDone();
+				}}
+				onClose={() => {
+					onClose();
+					onDone();
+				}}
+			/>
+		);
 	return (
-		<section
-			className="banner warn snapshot-banner"
-			aria-label="Earlier version"
-		>
+		<Modal title="This is an earlier version" busy={busy} onClose={onClose}>
 			<p>
-				<b>You are looking at an earlier version</b>
 				{snapshot ? (
 					<>
-						: “{snapshot.subject}”, from{" "}
+						“{snapshot.subject}”, from{" "}
 						<time dateTime={snapshot.date}>{longDate(snapshot.date)}</time>.
 					</>
 				) : (
-					` (${head.slice(0, 7)}).`
-				)}{" "}
-				It cannot be changed here. To edit from this version, start a branch
-				from it.
+					`Version ${head.slice(0, 7)}.`
+				)}
+			</p>
+			<p>
+				An earlier version is kept as it was, so it cannot be changed. To change
+				the manuscript, {back ? `return to ${back}, or ` : ""}start a branch
+				here: a new line of work that begins at this version.
 			</p>
 			{naming ? (
 				<form
-					className="row"
+					className="settings"
 					onSubmit={(e) => {
 						e.preventDefault();
 						run(() => gitCreateBranch(id, name.trim()));
 					}}
 				>
-					<label className="inline-field">
+					<label>
 						Branch name
 						<input
 							ref={input}
@@ -1236,22 +1286,26 @@ function SnapshotBanner({
 							placeholder="for example, gale-edits"
 						/>
 					</label>
-					<button type="submit" className="primary" disabled={busy}>
-						Create branch
-					</button>
-					<button type="button" onClick={() => setNaming(false)}>
-						Cancel
-					</button>
+					<div className="row end">
+						<button type="submit" className="primary" disabled={busy}>
+							Create branch
+						</button>
+						<button
+							type="button"
+							disabled={busy}
+							onClick={() => setNaming(false)}
+						>
+							Cancel
+						</button>
+					</div>
 				</form>
 			) : (
-				<div className="row">
+				<div className="row end">
 					{back && (
 						<button
 							type="button"
 							className="primary"
 							disabled={busy}
-							// ponytail: no save first, because the editor is read-only on a
-							// snapshot. The header dialog replacing this banner may need one.
 							onClick={() =>
 								run(() =>
 									runMove(id, {
@@ -1261,7 +1315,7 @@ function SnapshotBanner({
 								)
 							}
 						>
-							Back to {back}
+							Return to {back}
 						</button>
 					)}
 					<button
@@ -1270,7 +1324,10 @@ function SnapshotBanner({
 						onClick={() => setNaming(true)}
 						title="A new branch starts at this version, and you can edit it"
 					>
-						Start a branch from this version
+						Start a branch here
+					</button>
+					<button type="button" disabled={busy} onClick={onClose}>
+						Close
 					</button>
 				</div>
 			)}
@@ -1279,22 +1336,7 @@ function SnapshotBanner({
 					{problem}
 				</p>
 			)}
-			{unclean && (
-				<MovePrompt
-					id={id}
-					unclean={unclean}
-					onAuthLost={onAuthLost}
-					onMoved={() => {
-						setUnclean(null);
-						onDone();
-					}}
-					onClose={() => {
-						setUnclean(null);
-						onDone();
-					}}
-				/>
-			)}
-		</section>
+		</Modal>
 	);
 }
 
@@ -1318,7 +1360,7 @@ const statusText: Record<SyncStatus, string> = {
 	saved: "Saved",
 	saving: "Saving…",
 	unsaved: "Unsaved",
-	"read-only": "Read-only",
+	"read-only": "Read-only: not UTF-8 text",
 	collision: "Not saved",
 	error: "Not saved",
 };

@@ -15,6 +15,7 @@ import {
 	expect,
 	type Fake,
 	openFileName,
+	openFromTree,
 	PAPER,
 	type Server,
 	startFake,
@@ -574,8 +575,33 @@ test("Discard and move: Discard in the prompt shows the diff, discards after the
 	expect(await editorText(page)).not.toContain("% unfinished");
 });
 
-const banner = (page: Page) =>
-	page.getByRole("region", { name: "Earlier version" });
+/** The header text on a snapshot, where the branch name would be. */
+const readOnly = (page: Page) =>
+	topbar(page).getByRole("button", { name: "Read-only: earlier version" });
+/** The dialog the header opens on a snapshot. */
+const versionDialog = (page: Page) =>
+	page.getByRole("dialog", { name: "This is an earlier version" });
+
+/** Opens the header's dialog and chooses Return to `branch`. */
+async function returnTo(page: Page, branch: string) {
+	await readOnly(page).click();
+	await versionDialog(page)
+		.getByRole("button", { name: `Return to ${branch}` })
+		.click();
+}
+
+/** Commits a later title, then views the first commit from the history. */
+async function viewFirst(page: Page) {
+	await open(page);
+	const p = await openPanel(page);
+	await retitle(page, "A Later Title");
+	await commit(page, "Later title");
+	await history(page)
+		.getByRole("button", { name: /Initial manuscript/ })
+		.click();
+	await p.getByRole("button", { name: "View this version" }).click();
+	await expect(readOnly(page)).toBeVisible();
+}
 
 /** Types at the start of the open file and checks that nothing changed. */
 async function typingIsRefused(page: Page, server: Server) {
@@ -588,16 +614,16 @@ async function typingIsRefused(page: Page, server: Server) {
 	expect(onDisk(server)).toBe(disk);
 }
 
-test("View this version: an earlier version is read-only, builds, and the banner goes back to the branch", async ({
+test("View an earlier version: the editor shows the files as they were, refuses edits, and the header reads Read-only: earlier version", async ({
 	page,
 	server,
 }) => {
-	test.setTimeout(120_000);
 	await open(page);
 	const p = await openPanel(page);
 	await retitle(page, "A Later Title");
 	await commit(page, "Later title");
-	await expect(banner(page)).toHaveCount(0);
+	await expect(topbar(page).getByText("on branch main")).toBeVisible();
+	await expect(readOnly(page)).toHaveCount(0);
 
 	// Selecting an earlier commit offers to view it; the latest one does not.
 	await expect(
@@ -607,11 +633,156 @@ test("View this version: an earlier version is read-only, builds, and the banner
 		.getByRole("button", { name: /Initial manuscript/ })
 		.click();
 	await p.getByRole("button", { name: "View this version" }).click();
-	await expect(banner(page)).toContainText("Initial manuscript");
-	await expect(banner(page)).toContainText("cannot be changed");
+	await expect(readOnly(page)).toBeVisible();
+	await expect(topbar(page).getByText(/on branch|at version/)).toHaveCount(0);
 	await expect.poll(() => editorText(page)).toContain(TITLE);
 	expect(git(server.paper, "branch", "--show-current")).toBe("");
 	await typingIsRefused(page, server);
+	// No banner or strip: the header is the only indicator.
+	await expect(
+		page.getByRole("region", { name: "Earlier version" }),
+	).toHaveCount(0);
+	await expect(page.locator(".banner")).toHaveCount(0);
+});
+
+test("Read-only reason: the header opens a dialog that names the version by date and subject, says why, and offers Return and Start a branch here", async ({
+	page,
+	server,
+}) => {
+	await viewFirst(page);
+	const date = git(server.paper, "log", "-1", "--format=%aI", "HEAD");
+	await readOnly(page).click();
+	const dialog = versionDialog(page);
+	await expect(dialog).toContainText("Initial manuscript");
+	await expect(dialog.locator("time")).toHaveAttribute("datetime", date);
+	await expect(dialog).toContainText("cannot be changed");
+	for (const name of ["Return to main", "Start a branch here", "Close"])
+		await expect(
+			dialog.getByRole("button", { name, exact: true }),
+		).toBeVisible();
+
+	await dialog.getByRole("button", { name: "Close" }).click();
+	await expect(dialog).toBeHidden();
+	expect(git(server.paper, "branch", "--show-current")).toBe("");
+});
+
+test("Back to the branch: Return puts the clone on its branch again, and the editor accepts edits", async ({
+	page,
+	server,
+}) => {
+	await viewFirst(page);
+	await returnTo(page, "main");
+	await expect(versionDialog(page)).toBeHidden();
+	await expect(topbar(page).getByText("on branch main")).toBeVisible();
+	await expect(readOnly(page)).toHaveCount(0);
+	expect(git(server.paper, "branch", "--show-current")).toBe("main");
+	await expect.poll(() => editorText(page)).toContain("A Later Title");
+	await typeAtStart(page, "% editable again\n");
+	expect(onDisk(server)).toContain("% editable again");
+});
+
+test("Back to the branch: with uncommitted changes on a snapshot, Return shows the prompt without Commit, and Discard then returns", async ({
+	page,
+	server,
+}) => {
+	await viewFirst(page);
+	writeFileSync(join(server.paper, "stray.tex"), "% made while detached\n");
+	await returnTo(page, "main");
+	const dialog = prompt(page, "Return to branch main");
+	await expect(
+		dialog.getByRole("list", { name: "Changed files" }),
+	).toContainText("stray.tex");
+	await expect(
+		dialog.getByRole("button", { name: "Commit", exact: true }),
+	).toHaveCount(0);
+	expect(git(server.paper, "branch", "--show-current")).toBe("");
+
+	await dialog.getByRole("button", { name: "Discard…" }).click();
+	await page
+		.getByRole("dialog", { name: /Discard/ })
+		.getByRole("button", { name: "Discard these changes" })
+		.click();
+	await expect(dialog).toBeHidden();
+	await expect(topbar(page).getByText("on branch main")).toBeVisible();
+	expect(git(server.paper, "branch", "--show-current")).toBe("main");
+	expect(git(server.paper, "status", "--porcelain")).toBe("");
+});
+
+test("Branch from an earlier version: Start a branch here asks for a name, the branch starts at that commit, and the editor accepts edits", async ({
+	page,
+	server,
+}) => {
+	await viewFirst(page);
+	const first = git(server.paper, "rev-parse", "HEAD");
+	await readOnly(page).click();
+	const dialog = versionDialog(page);
+	await dialog.getByRole("button", { name: "Start a branch here" }).click();
+	await dialog.getByLabel("Branch name").fill("from-first");
+	await dialog.getByRole("button", { name: "Create branch" }).click();
+	await expect(dialog).toBeHidden();
+	await expect(topbar(page).getByText("on branch from-first")).toBeVisible();
+	expect(git(server.paper, "rev-parse", "HEAD")).toBe(first);
+	await typeAtStart(page, "% on the new branch\n");
+	expect(onDisk(server)).toContain("% on the new branch");
+});
+
+test("Branch age does not lock editing: an old branch, and a branch Get latest advanced, stay editable", async ({
+	page,
+	github,
+	server,
+}) => {
+	await open(page);
+	// "old" holds only the first commit, older than and behind main.
+	git(server.paper, "branch", "old");
+	const p = await openPanel(page);
+	await retitle(page, "A Later Title");
+	await commit(page, "Later title");
+	await switchTo(page, "old");
+	await expect(topbar(page).getByText("on branch old")).toBeVisible();
+	await expect(readOnly(page)).toHaveCount(0);
+	await typeAtStart(page, "% on an old branch\n");
+	expect(onDisk(server)).toContain("% on an old branch");
+	await commit(page, "Old branch note");
+
+	await switchTo(page, "main");
+	await expect(topbar(page).getByText("on branch main")).toBeVisible();
+	await p.getByRole("button", { name: "Send", exact: true }).click();
+	await expect(p.getByRole("status")).toContainText("Sent");
+	const other = coauthor(github);
+	other.push("Their reference", "Small steps", "Smaller steps", "refs.bib");
+	other.remove();
+	await p.getByRole("button", { name: "Get latest" }).click();
+	await expect(p.getByRole("status")).toContainText("up to date");
+	await expect(readOnly(page)).toHaveCount(0);
+	await typeAtStart(page, "% after Get latest\n");
+	expect(onDisk(server)).toContain("% after Get latest");
+});
+
+test("Encoding read-only reason: a file that is not UTF-8 says so beside its name and offers no branch", async ({
+	page,
+	server,
+}) => {
+	await open(page);
+	writeFileSync(
+		join(server.paper, "latin1.tex"),
+		Buffer.from("Caf\xe9 au lait\n", "latin1"),
+	);
+	await openFromTree(page, "latin1.tex");
+	await expect(openFileName(page)).toHaveText("latin1.tex");
+	await expect(saveStatus(page)).toContainText("not UTF-8");
+	const pane = page.getByRole("region", { name: "Editor" });
+	await expect(pane.getByRole("button", { name: /branch/i })).toHaveCount(0);
+	await expect(readOnly(page)).toHaveCount(0);
+	await expect(topbar(page).getByText("on branch main")).toBeVisible();
+});
+
+test("PDF from another version: a snapshot builds, and after Return in the header dialog that PDF is out of date", async ({
+	page,
+	server,
+}) => {
+	test.setTimeout(120_000);
+	await viewFirst(page);
+	await expect.poll(() => editorText(page)).toContain(TITLE);
 
 	// The snapshot builds.
 	await page.getByRole("button", { name: "Build PDF" }).click();
@@ -621,8 +792,8 @@ test("View this version: an earlier version is read-only, builds, and the banner
 	await expect(page.getByText("The PDF is out of date")).toHaveCount(0);
 
 	// Back on the branch, that PDF is out of date and the editor takes edits.
-	await banner(page).getByRole("button", { name: "Back to main" }).click();
-	await expect(banner(page)).toHaveCount(0);
+	await returnTo(page, "main");
+	await expect(readOnly(page)).toHaveCount(0);
 	await expect(topbar(page).getByText("on branch main")).toBeVisible();
 	await expect.poll(() => editorText(page)).toContain("A Later Title");
 	await expect(page.getByText("The PDF is out of date")).toBeVisible();
@@ -665,12 +836,12 @@ test("View with uncommitted changes: the prompt lists them, and the checkout sta
 	await expect(dialog).toBeVisible();
 	expect(git(server.paper, "branch", "--show-current")).toBe("main");
 	expect(git(server.paper, "rev-parse", "HEAD")).toBe(head);
-	await expect(banner(page)).toHaveCount(0);
+	await expect(readOnly(page)).toHaveCount(0);
 
 	await dialog.getByLabel("Describe your changes").fill("Unfinished note");
 	await dialog.getByRole("button", { name: "Commit", exact: true }).click();
 	await expect(dialog).toBeHidden();
-	await expect(banner(page)).toContainText("Initial manuscript");
+	await expect(readOnly(page)).toBeVisible();
 	expect(git(server.paper, "branch", "--show-current")).toBe("");
 	expect(git(server.paper, "log", "-1", "--format=%s", "main")).toBe(
 		"Unfinished note",
@@ -690,7 +861,7 @@ test("Cancel: nothing is committed, discarded, or moved", async ({
 	expect(git(server.paper, "rev-parse", "HEAD")).toBe(head);
 	expect(git(server.paper, "status", "--porcelain")).toBe("M main.tex");
 	expect(onDisk(server)).toMatch(/^% unfinished\n/);
-	await expect(banner(page)).toHaveCount(0);
+	await expect(readOnly(page)).toHaveCount(0);
 });
 
 test("Get latest with uncommitted changes: the prompt shows, and the merge waits for the confirmed discard", async ({
@@ -789,33 +960,33 @@ test("Unfinished merge: a move is refused without a prompt until the merge is fi
 	expect(onDisk(server)).toContain("<<<<<<<");
 });
 
-test("Snapshot: a commit link opens a read-only snapshot, and a branch from it can be edited and committed", async ({
+test("Commit link after newer pushes: the commit opens as a read-only snapshot, the header explains why and offers the way to edit, and a branch from it can be committed", async ({
 	page,
 	github,
 	server,
 }) => {
+	// The author shares the tip of main, then pushes again to main.
 	const first = git(bare(github), "rev-parse", "main");
 	const other = coauthor(github);
 	other.push("Later", TITLE, "\\title{Later}");
 	other.remove();
 
 	await open(page, `${PAPER.url}/commit/${first}`);
-	await expect(
-		topbar(page).getByText(`at version ${first.slice(0, 7)}`),
-	).toBeVisible();
-	await expect(banner(page)).toContainText("Initial manuscript");
-	await expect(
-		banner(page).getByRole("button", { name: "Back to main" }),
-	).toBeVisible();
+	await expect(readOnly(page)).toBeVisible();
 	await typingIsRefused(page, server);
 
-	await banner(page)
-		.getByRole("button", { name: "Start a branch from this version" })
-		.click();
-	await banner(page).getByLabel("Branch name").fill("from-snapshot");
-	await banner(page).getByRole("button", { name: "Create branch" }).click();
+	await readOnly(page).click();
+	const dialog = versionDialog(page);
+	await expect(dialog).toContainText("Initial manuscript");
+	await expect(dialog).toContainText("cannot be changed");
+	await expect(
+		dialog.getByRole("button", { name: "Return to main" }),
+	).toBeVisible();
+	await dialog.getByRole("button", { name: "Start a branch here" }).click();
+	await dialog.getByLabel("Branch name").fill("from-snapshot");
+	await dialog.getByRole("button", { name: "Create branch" }).click();
 	await expect(topbar(page).getByText("on branch from-snapshot")).toBeVisible();
-	await expect(banner(page)).toHaveCount(0);
+	await expect(readOnly(page)).toHaveCount(0);
 	expect(git(server.paper, "rev-parse", "HEAD")).toBe(first);
 
 	await typeAtStart(page, "% on a branch from the snapshot\n");

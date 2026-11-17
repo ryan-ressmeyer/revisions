@@ -2281,14 +2281,10 @@ dialog.wide {
 	border-radius: 4px;
 }
 
-/* The earlier version on screen */
+/* The header on a snapshot: says the version is read-only, opens why */
 
-.banner.snapshot-banner p {
-	margin: 0 0 0.5rem;
-}
-
-.snapshot-banner .inline-field {
-	color: var(--text);
+button.link.read-only-version {
+	color: var(--warn);
 }
 
 .commit-view {

@@ -122,7 +122,7 @@ function instrument() {
 	const w = window as any;
 	w.__ev = [];
 	const snap = () => ({
-		where: document.querySelector(".topbar .repo .muted")?.textContent ?? "",
+		where: document.querySelector(".topbar .repo .where")?.textContent ?? "",
 		status: document.querySelector(".save-status")?.textContent ?? "",
 		modal: !!document.querySelector("dialog[open]"),
 		ro:
@@ -251,11 +251,22 @@ async function load(page: Page, url: string) {
 	if (page.url() === url) await page.reload();
 	else await page.goto(url);
 	await expect(page.locator(".cm-content")).toBeVisible({ timeout: 15_000 });
-	await expect(page.locator(".topbar .repo .muted")).toHaveText(
-		/on branch|at version/,
+	await expect(page.locator(".topbar .repo .where")).toHaveText(
+		/on branch|Read-only: earlier version/,
 	);
 	await showSource(page);
 	await expect(page.locator(".save-status")).toHaveText(/Saved|Read-only/);
+}
+
+/** Opens the header dialog on a snapshot and finds its Return to main. */
+async function returnButton(page: Page): Promise<Locator> {
+	await page
+		.getByRole("banner")
+		.getByRole("button", { name: "Read-only: earlier version" })
+		.click();
+	return page
+		.getByRole("dialog", { name: "This is an earlier version" })
+		.getByRole("button", { name: "Return to main" });
 }
 
 const panel = (page: Page) =>
@@ -757,9 +768,7 @@ test("back: Back to the branch from a snapshot, type while it runs", async ({
 		await load(page, url);
 		const before = await editorDoc(page);
 		const pt = await editorPoint(page);
-		const back = page
-			.getByRole("region", { name: "Earlier version" })
-			.getByRole("button", { name: "Back to main" });
+		const back = await returnButton(page);
 		await back.waitFor();
 		net.length = 0;
 		const d = rand(0, 1000);
@@ -1158,10 +1167,7 @@ test("followup: aftermath of SNAPSHOT-WRITTEN and ERROR-SHOWN", async ({
 	out.panelButton = await page
 		.getByRole("button", { name: /Changes & history/ })
 		.textContent();
-	await page
-		.getByRole("region", { name: "Earlier version" })
-		.getByRole("button", { name: "Back to main" })
-		.click();
+	await (await returnButton(page)).click();
 	await sleep(1500);
 	out.backAlerts = await alerts();
 	out.branchAfterBack = git(server.paper, "branch", "--show-current");
@@ -1175,7 +1181,7 @@ test("followup: aftermath of SNAPSHOT-WRITTEN and ERROR-SHOWN", async ({
 		.getByRole("button", { name: "Discard changes…" })
 		.isVisible();
 
-	// 2. ERROR-SHOWN: text refused as detached, then Back to main, then one more key.
+	// 2. ERROR-SHOWN: text refused as detached, then Return to main, then one more key.
 	reset(server, "main");
 	await load(page, url);
 	await typeAt(page, await editorPoint(page), "QJERR");
@@ -1186,10 +1192,7 @@ test("followup: aftermath of SNAPSHOT-WRITTEN and ERROR-SHOWN", async ({
 		(s) => s.slice(0, 200),
 	);
 	out.errEditorHasText = (await editorDoc(page)).includes("QJERR");
-	await page
-		.getByRole("region", { name: "Earlier version" })
-		.getByRole("button", { name: "Back to main" })
-		.click();
+	await (await returnButton(page)).click();
 	await sleep(3000);
 	out.afterBackStatus = await page.locator(".save-status").textContent();
 	out.afterBackDiskHasText = readFileSync(f, "utf8").includes("QJERR");
