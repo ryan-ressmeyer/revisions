@@ -210,18 +210,26 @@ export function gitDiscard(
 	return op("POST", `${R(id)}/git/discard`, { fingerprint });
 }
 
+/** A step of the one-sweep pull request, as an error's `done` names it. */
+export type PullStep = "branch" | "base" | "sent";
+
 /**
- * Opens a pull request from the current branch. `base` defaults to the
- * repository's default branch when empty. Errors: 409 `detached`,
- * `not_pushed`, 422 `pull_rejected`.
+ * Opens a pull request from the current branch in one sweep, sending it
+ * first when GitHub lacks any of it. `base` defaults to the repository's
+ * default branch when empty. On the base branch, `branch` names the new branch
+ * that takes the commits. Errors: 400 `bad_branch`, 403 `no_push_permission`,
+ * 409 `detached`, `merging`, `nothing_to_propose`, `needs_branch`,
+ * `branch_exists`, `base_moved`, `rejected`, 422 `pull_rejected`. An error
+ * after a completed step carries `done`, the {@link PullStep}s completed.
  */
 export function createPull(
 	id: RepoId,
 	title: string,
 	body: string,
 	base = "",
+	branch = "",
 ): Promise<PullRequest> {
-	return op("POST", `${R(id)}/pulls`, { title, body, base });
+	return op("POST", `${R(id)}/pulls`, { title, body, base, branch });
 }
 
 export interface DeletePreview {

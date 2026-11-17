@@ -190,8 +190,10 @@ test("Send: a commit reaches GitHub and the branch shows as in sync", async ({
 	).toBeVisible();
 });
 
-test("Open a pull request: a branch is sent and its pull request shows in the graph", async ({
+test("Open a pull request: a branch never sent is sent, and its pull request shows in the graph", async ({
 	page,
+	github,
+	server,
 }) => {
 	await open(page);
 	const p = await openPanel(page);
@@ -205,14 +207,12 @@ test("Open a pull request: a branch is sent and its pull request shows in the gr
 	await retitle(page, "A Better Title");
 	await commit(page, "Improve the title");
 
-	// Not sent yet: the pull request asks for a Send first.
+	// Not sent yet: one click sends the branch and opens the pull request.
 	await p.getByRole("button", { name: "Pull request…" }).click();
 	const dialog = page.getByRole("dialog", { name: "Open a pull request" });
+	await expect(dialog.getByLabel("New branch name")).toHaveCount(0);
 	await dialog.getByLabel("Title").fill("A better title");
 	await dialog.getByLabel("Description").fill("Shorter and clearer.");
-	await dialog.getByRole("button", { name: "Open pull request" }).click();
-	await expect(dialog.getByRole("alert")).toContainText("Send");
-	await dialog.getByRole("button", { name: "Send now" }).click();
 	await dialog.getByRole("button", { name: "Open pull request" }).click();
 
 	const link = dialog.getByRole("link", { name: /#1/ });
@@ -226,15 +226,119 @@ test("Open a pull request: a branch is sent and its pull request shows in the gr
 		.first()
 		.getByRole("link", { name: /Pull request #1/ });
 	await expect(badge).toHaveAttribute("target", "_blank");
+	expect(git(bare(github), "rev-parse", "fix-title")).toBe(
+		git(server.paper, "rev-parse", "HEAD"),
+	);
+});
+
+/** Opens Pull request… and fills it in; `branch` is the new branch name. */
+async function proposeFromMain(page: Page, title: string, branch: string) {
+	await panel(page).getByRole("button", { name: "Pull request…" }).click();
+	const dialog = page.getByRole("dialog", { name: "Open a pull request" });
+	await expect(dialog).toContainText(
+		"Uncommitted changes come along to the new branch but are not part of the pull request.",
+	);
+	await dialog.getByLabel("Title").fill(title);
+	await dialog.getByLabel("New branch name").fill(branch);
+	await dialog.getByRole("button", { name: "Open pull request" }).click();
+	return dialog;
+}
+
+test("Pull request from the shared branch: the unsent commits move to a new branch, main matches GitHub again, and the pull request opens", async ({
+	page,
+	github,
+	server,
+}) => {
+	await open(page);
+	await typeAtStart(page, "% revised on main\n");
+	await openPanel(page);
+	await commit(page, "Revise on main");
+	const revised = git(server.paper, "rev-parse", "HEAD");
+	await typeAtStart(page, "% not proposed\n");
+
+	const dialog = await proposeFromMain(page, "Revise on main", "ada-revisions");
+	await expect(dialog.getByRole("link", { name: /#1/ })).toBeVisible();
+	await expect(topbar(page).getByText("on branch ada-revisions")).toBeVisible();
+	expect(git(bare(github), "rev-parse", "ada-revisions")).toBe(revised);
+	const sent = git(bare(github), "rev-parse", "main");
+	expect(git(server.paper, "rev-parse", "main")).toBe(sent);
+	expect(git(server.paper, "rev-parse", "origin/main")).toBe(sent);
+	// The uncommitted change came along, still uncommitted.
+	expect(onDisk(server)).toMatch(/^% not proposed\n% revised on main\n/);
+	expect(git(server.paper, "status", "--porcelain")).toBe("M main.tex");
+});
+
+test("Nothing to propose: GitHub already has every commit, so nothing changes and the page says so", async ({
+	page,
+	github,
+	server,
+}) => {
+	await open(page);
+	await openPanel(page);
+	const refs = () =>
+		[
+			git(server.paper, "for-each-ref"),
+			git(server.paper, "rev-parse", "--symbolic-full-name", "HEAD"),
+			git(bare(github), "for-each-ref"),
+		].join("\n");
+	const before = refs();
+	const dialog = await proposeFromMain(page, "Nothing new", "ada-nothing");
+	await expect(dialog.getByRole("alert")).toContainText(
+		"nothing to propose yet",
+	);
+	expect(refs()).toBe(before);
+});
+
+test("Pull request step fails: the page says the branch was made and main moved, nothing was sent, and why, with no retry", async ({
+	page,
+	github,
+	server,
+}) => {
+	writeFileSync(
+		join(bare(github), "hooks", "pre-receive"),
+		"#!/bin/sh\necho 'closed for the test' >&2\nexit 1\n",
+		{ mode: 0o755 },
+	);
+	await open(page);
+	await typeAtStart(page, "% revised\n");
+	await openPanel(page);
+	await commit(page, "Revise");
+	let pulls = 0;
+	let pushes = 0;
+	page.on("request", (r) => {
+		if (r.method() !== "POST") return;
+		if (r.url().endsWith("/pulls")) pulls++;
+		if (r.url().includes("/git/push")) pushes++;
+	});
+
+	const dialog = await proposeFromMain(page, "Revise", "ada-fails");
+	const alert = dialog.getByRole("alert");
+	await expect(alert).toContainText("Branch ada-fails was created");
+	await expect(alert).toContainText(
+		"Branch main was moved back to match GitHub",
+	);
+	await expect(alert).toContainText("Nothing was sent to GitHub");
+	await expect(alert).toContainText("pre-receive hook declined");
+	await expect(topbar(page).getByText("on branch ada-fails")).toBeVisible();
+	expect(git(server.paper, "rev-parse", "main")).toBe(
+		git(server.paper, "rev-parse", "origin/main"),
+	);
+	expect(git(bare(github), "branch", "--list", "ada-fails")).toBe("");
+	expect([pulls, pushes]).toEqual([1, 0]);
 });
 
 test.describe("read-only account", () => {
 	test.use({ fakeArgs: ["-push=false"] });
 
-	test("Read-only collaborator: no Send, Force-push, or pull request, and a reason", async ({
+	test("No write access: opening the project says sharing needs write access, the commit box repeats it, and Send, Force-push, and pull requests are not offered", async ({
 		page,
 	}) => {
 		await open(page);
+		await expect(
+			page
+				.getByRole("status")
+				.filter({ hasText: "Sharing needs write access" }),
+		).toContainText("the author grants on GitHub");
 		await typeAtStart(page, "% local only\n");
 		const p = await openPanel(page);
 		await expect(p).toContainText("can read this manuscript but not change it");
@@ -243,6 +347,10 @@ test.describe("read-only account", () => {
 		await expect(p.getByRole("button", { name: /Force-push/ })).toHaveCount(0);
 		await expect(p.getByRole("button", { name: /pull request/i })).toHaveCount(
 			0,
+		);
+		await p.getByRole("button", { name: /Uncommitted changes/ }).click();
+		await expect(p.locator(".commit-form")).toContainText(
+			"Sharing needs write access, which the author grants on GitHub.",
 		);
 		await commit(page, "Kept on this computer");
 	});

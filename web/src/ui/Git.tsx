@@ -41,6 +41,7 @@ import {
 	gitStatus,
 	gitViewVersion,
 	type PullRequest,
+	type PullStep,
 } from "../api/git";
 import type { RepoState } from "../api/repo";
 import { layoutGraph } from "../core/graph/graph";
@@ -60,6 +61,9 @@ export const statusWords: Record<FileStatus["status"], string> = {
 const MERGE_MESSAGE = "Combine my changes with the latest from GitHub";
 export const UNSAVED =
 	"Your latest edits could not be saved, so nothing was done. See the message above the editor.";
+/** Why a collaborator without push permission cannot share. */
+export const WRITE_ACCESS =
+	"Sharing needs write access, which the author grants on GitHub.";
 
 interface Problem {
 	text: string;
@@ -427,8 +431,8 @@ export function GitPanel({
 			{status && !canPush && (
 				<p className="git-note">
 					Your GitHub account can read this manuscript but not change it, so
-					Send and pull requests are not offered; you can still commit on this
-					computer, and the author can give your account write access on GitHub.
+					Send and pull requests are not offered. {WRITE_ACCESS} You can still
+					commit on this computer.
 				</p>
 			)}
 			{status && status.finished.length > 0 && (
@@ -586,6 +590,8 @@ export function GitPanel({
 			{dialog === "pull" && status && (
 				<PullDialog
 					id={id}
+					branch={status.branch}
+					defaultBranch={status.defaultBranch}
 					defaultTitle={
 						log?.commits.find((c) => c.sha === status.head)?.subject ?? ""
 					}
@@ -1073,6 +1079,11 @@ function ChangesView({
 							GitHub. Revisions refuses while a file still has conflict markers.
 						</p>
 					)}
+					{!status.permissions.push && !status.authError && (
+						<p className="help">
+							{WRITE_ACCESS} Your commits stay on this computer until then.
+						</p>
+					)}
 					<div className="row">
 						<button
 							type="submit"
@@ -1373,8 +1384,36 @@ function BranchDialog({
 	);
 }
 
+/** What a failed one-sweep pull request did and did not do, from the error's
+ * `done`; "" when it did nothing. */
+function stepsDone(error: unknown, branch: string, base: string): string {
+	const done =
+		error instanceof ApiError && Array.isArray(error.extra.done)
+			? (error.extra.done as PullStep[])
+			: [];
+	if (done.length === 0) return "";
+	const said: string[] = [];
+	if (done.includes("branch")) {
+		said.push(
+			`Branch ${branch} was created, and you are on it with your changes.`,
+			done.includes("base")
+				? `Branch ${base} was moved back to match GitHub.`
+				: `Branch ${base} was left as it was.`,
+		);
+	}
+	said.push(
+		done.includes("sent")
+			? "Your branch was sent to GitHub."
+			: "Nothing was sent to GitHub.",
+		"The pull request was not opened, and nothing was retried.",
+	);
+	return said.join(" ");
+}
+
 function PullDialog({
 	id,
+	branch,
+	defaultBranch,
 	defaultTitle,
 	flush,
 	after,
@@ -1382,53 +1421,62 @@ function PullDialog({
 	onClose,
 }: {
 	id: RepoId;
+	/** The current branch. */
+	branch: string | null;
+	defaultBranch: string | null;
 	defaultTitle: string;
 	flush: () => Promise<boolean>;
 	after: () => void;
 	onAuthLost: () => void;
 	onClose: () => void;
 }) {
-	const [form, setForm] = useState({ title: defaultTitle, body: "", base: "" });
+	const [form, setForm] = useState({
+		title: defaultTitle,
+		body: "",
+		base: "",
+		branch: "",
+	});
 	const [created, setCreated] = useState<PullRequest | null>(null);
 	const [problem, setProblem] = useState<Problem | null>(null);
-	const [needsSend, setNeedsSend] = useState(false);
-	const [note, setNote] = useState("");
+	// The server said the current branch is the base, which the page could not tell.
+	const [askBranch, setAskBranch] = useState(false);
 	const [busy, setBusy] = useState(false);
 
-	const fail = (error: unknown) => {
-		if (isCode(error, "auth_required")) onAuthLost();
-		setProblem(problemOf(error));
-		setNeedsSend(isCode(error, "not_pushed"));
-	};
+	const base = form.base.trim() || defaultBranch;
+	const onBase = askBranch || (branch !== null && branch === base);
 	const open = async (event: FormEvent) => {
 		event.preventDefault();
-		setProblem(null);
-		setNote("");
-		setBusy(true);
-		try {
-			setCreated(await createPull(id, form.title, form.body, form.base.trim()));
-			after();
-		} catch (error) {
-			fail(error);
-		} finally {
-			setBusy(false);
-		}
-	};
-	const send = async () => {
 		setProblem(null);
 		if (!(await flush())) {
 			setProblem({ text: UNSAVED });
 			return;
 		}
+		const newBranch = onBase ? form.branch.trim() : "";
 		setBusy(true);
 		try {
-			await gitPush(id);
-			setNote("Sent. Now open the pull request.");
-			after();
+			setCreated(
+				await createPull(
+					id,
+					form.title,
+					form.body,
+					form.base.trim(),
+					newBranch,
+				),
+			);
 		} catch (error) {
-			fail(error);
+			if (isCode(error, "auth_required")) onAuthLost();
+			setAskBranch((a) => a || isCode(error, "needs_branch"));
+			const p = problemOf(error);
+			const steps = stepsDone(error, newBranch, base ?? "the base branch");
+			// GitHub's refusal of a just-made branch is best said in its own words.
+			const why =
+				steps && isCode(error, "rejected")
+					? (error as ApiError).message
+					: p.text;
+			setProblem({ ...p, text: steps ? `${steps} Why: ${why}` : p.text });
 		} finally {
 			setBusy(false);
+			after();
 		}
 	};
 
@@ -1488,18 +1536,28 @@ function PullDialog({
 				<p id="pull-base-help" className="help">
 					Leave empty to use the repository's default branch.
 				</p>
-				{problem && (
-					<ProblemBox problem={problem}>
-						{needsSend && (
-							<button type="button" onClick={send} disabled={busy}>
-								Send now
-							</button>
-						)}
-					</ProblemBox>
+				{onBase && (
+					<>
+						<label>
+							New branch name
+							<input
+								value={form.branch}
+								onChange={(e) => setForm({ ...form, branch: e.target.value })}
+								placeholder="for example, gale-edits"
+								spellCheck={false}
+								aria-describedby="pull-branch-help"
+							/>
+						</label>
+						<p id="pull-branch-help" className="help">
+							You are on {base ?? "the branch the pull request goes into"}. Your
+							commits move to this new branch, which is sent to GitHub, and{" "}
+							{base ?? "that branch"} goes back to match GitHub. Uncommitted
+							changes come along to the new branch but are not part of the pull
+							request.
+						</p>
+					</>
 				)}
-				<p role="status" className="git-done">
-					{note}
-				</p>
+				{problem && <ProblemBox problem={problem} />}
 				<div className="row end">
 					<button type="button" onClick={onClose}>
 						Cancel

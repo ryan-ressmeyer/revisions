@@ -173,19 +173,15 @@ func TestOpenAPullRequest(t *testing.T) {
 	h.commit(t, "Clarify the introduction")
 	head := h.head(t)
 
-	// A pull request needs the branch on GitHub first.
+	// The branch was never sent: the pull request sends it first.
 	pull := map[string]string{"title": "Clarify the introduction", "body": "See the first paragraph.", "base": "main"}
-	wantError(t, h.call(t, "POST", testRepo+"/pulls", pull), 409, "not_pushed")
-
-	st = ok[statusBody](t, h.call(t, "POST", testRepo+"/git/push", nil))
-	if st.Upstream == nil || *st.Upstream != "origin/gale/intro-edits" || st.Ahead != 0 {
-		t.Fatalf("after push: %+v", st)
+	created := ok[pullBody](t, h.call(t, "POST", testRepo+"/pulls", pull))
+	if st := h.status(t); st.Upstream == nil || *st.Upstream != "origin/gale/intro-edits" || st.Ahead != 0 {
+		t.Fatalf("after the pull request: %+v", st)
 	}
 	if got := gitIn(t, h.bare, "rev-parse", "gale/intro-edits"); got != head {
 		t.Fatalf("GitHub's branch is at %s, want %s", got, head)
 	}
-
-	created := ok[pullBody](t, h.call(t, "POST", testRepo+"/pulls", pull))
 	want := pullBody{Number: 1, Title: "Clarify the introduction", State: "open", HeadSHA: head, HeadRef: "gale/intro-edits", URL: "https://github.com/owner/name/pull/1"}
 	if created != want {
 		t.Fatalf("created %+v, want %+v", created, want)
@@ -207,11 +203,170 @@ func TestOpenAPullRequest(t *testing.T) {
 	if root := log.Commits[1]; !slices.Equal(root.Refs, []string{"refs/heads/main", "refs/remotes/origin/main"}) || root.Parents == nil || len(root.Parents) != 0 {
 		t.Fatalf("root commit = %+v", root)
 	}
+}
 
-	// With commits not yet pushed, the pull request would miss them.
-	write(t, h.clone, "main.tex", "an even clearer introduction\n")
-	h.commit(t, "Clarify again")
-	wantError(t, h.call(t, "POST", testRepo+"/pulls", pull), 409, "not_pushed")
+// pullError is an error answer of R/pulls with the steps it completed.
+type pullError struct {
+	Code    string
+	Message string
+	Done    []string
+}
+
+func pullFailed(t *testing.T, h *hosted, body map[string]string, status int, code string) pullError {
+	t.Helper()
+	rec := h.call(t, "POST", testRepo+"/pulls", body)
+	wantError(t, rec, status, code)
+	var e struct{ Error pullError }
+	json.Unmarshal(rec.Body.Bytes(), &e)
+	return e.Error
+}
+
+// Scenario: Pull request from the shared branch.
+func TestPullRequestFromTheSharedBranch(t *testing.T) {
+	h := newOpened(t)
+	sent := h.head(t)
+	write(t, h.clone, "main.tex", "first revision\n")
+	h.commit(t, "Revise the opening")
+	write(t, h.clone, "refs.bib", "% second revision\n")
+	h.commit(t, "Revise the references")
+	unsent := h.head(t)
+	write(t, h.clone, "notes.tex", "not part of the pull request\n")
+
+	created := ok[pullBody](t, h.call(t, "POST", testRepo+"/pulls",
+		map[string]string{"title": "Revisions", "body": "Two edits.", "base": "main", "branch": "gale/revisions"}))
+	if created.HeadRef != "gale/revisions" || created.HeadSHA != unsent || created.Number != 1 {
+		t.Fatalf("created %+v", created)
+	}
+	st := h.status(t)
+	if st.Branch == nil || *st.Branch != "gale/revisions" || st.Head != unsent || st.Upstream == nil || *st.Upstream != "origin/gale/revisions" || st.Ahead != 0 {
+		t.Fatalf("status after: %+v", st)
+	}
+	// The uncommitted change came along and is still uncommitted.
+	if st.files() != "untracked notes.tex" {
+		t.Fatalf("files after: %s", st.files())
+	}
+	// The base matches GitHub again; the new branch is on GitHub.
+	if local, remote := gitIn(t, h.clone, "rev-parse", "main"), gitIn(t, h.clone, "rev-parse", "origin/main"); local != sent || remote != sent {
+		t.Fatalf("main = %s, origin/main = %s, want both %s", local, remote, sent)
+	}
+	if got := gitIn(t, h.bare, "rev-parse", "gale/revisions"); got != unsent {
+		t.Fatalf("GitHub's branch is at %s, want %s", got, unsent)
+	}
+	if got := gitIn(t, h.bare, "rev-parse", "main"); got != sent {
+		t.Fatalf("GitHub's main moved to %s", got)
+	}
+}
+
+// Scenario: Nothing to propose, and the other refusals that come before any step.
+func TestPullRequestRefusesBeforeAnyStep(t *testing.T) {
+	h := newOpened(t)
+	// The clone's refs include where HEAD is.
+	refsOf := func(t *testing.T, dir string) string {
+		return refsOf(t, dir) + "\nHEAD " + gitIn(t, dir, "rev-parse", "--symbolic-full-name", "HEAD")
+	}
+	unchanged := func(before, bare string) {
+		t.Helper()
+		if refsOf(t, h.clone) != before || refsOf(t, h.bare) != bare {
+			t.Fatalf("refs changed:\n%s\n%s", refsOf(t, h.clone), refsOf(t, h.bare))
+		}
+	}
+	pull := func(branch string) map[string]string {
+		return map[string]string{"title": "Revisions", "base": "main", "branch": branch}
+	}
+	before, bare := refsOf(t, h.clone), refsOf(t, h.bare)
+	pullFailed(t, h, pull("gale/new"), 409, "nothing_to_propose")
+	// A branch of its own with nothing new is nothing to propose either.
+	gitIn(t, h.clone, "switch", "--quiet", "-c", "idle")
+	before = refsOf(t, h.clone)
+	pullFailed(t, h, pull(""), 409, "nothing_to_propose")
+	unchanged(before, bare)
+	gitIn(t, h.clone, "switch", "--quiet", "main")
+
+	write(t, h.clone, "main.tex", "a revision\n")
+	h.commit(t, "Revise")
+	before = refsOf(t, h.clone)
+	pullFailed(t, h, pull(""), 409, "needs_branch")
+	pullFailed(t, h, pull("bad..name"), 400, "bad_branch")
+	pullFailed(t, h, pull("idle"), 409, "branch_exists")
+	h.fake.SetPush("owner/name", false)
+	pullFailed(t, h, pull("gale/new"), 403, "no_push_permission")
+	h.fake.SetPush("owner/name", true)
+	unchanged(before, bare)
+
+	gitIn(t, h.clone, "switch", "--quiet", "--detach")
+	pullFailed(t, h, pull("gale/new"), 409, "detached")
+	gitIn(t, h.clone, "switch", "--quiet", "main")
+
+	// An unfinished merge.
+	author := h.authorClone(t)
+	authorCommit(t, author, "main.tex", "the author's line\n")
+	if st := ok[statusBody](t, h.call(t, "POST", testRepo+"/git/pull", nil)); !st.Merging {
+		t.Fatalf("no merge in progress: %+v", st)
+	}
+	before, bare = refsOf(t, h.clone), refsOf(t, h.bare)
+	pullFailed(t, h, pull("gale/new"), 409, "merging")
+	unchanged(before, bare)
+	if h.fake.Requests("POST /repos/owner/name/pulls") != 0 {
+		t.Fatal("a refused request reached GitHub's pull requests")
+	}
+}
+
+// A base that moved while the branch was made is left alone and reported.
+func TestPullRequestLeavesAMovedBaseAlone(t *testing.T) {
+	h := newOpened(t)
+	write(t, h.clone, "main.tex", "first revision\n")
+	h.commit(t, "One")
+	write(t, h.clone, "main.tex", "second revision\n")
+	h.commit(t, "Two")
+	head := h.head(t)
+	// Another Git process moves main the moment the new branch is checked out.
+	hook := filepath.Join(h.clone, ".git", "hooks", "post-checkout")
+	if err := os.WriteFile(hook, []byte("#!/bin/sh\ngit update-ref refs/heads/main HEAD^\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	moved := gitIn(t, h.clone, "rev-parse", "HEAD^")
+
+	e := pullFailed(t, h, map[string]string{"title": "Two", "base": "main", "branch": "gale/two"}, 409, "base_moved")
+	if !slices.Equal(e.Done, []string{"branch"}) {
+		t.Fatalf("done = %v", e.Done)
+	}
+	if got := gitIn(t, h.clone, "rev-parse", "main"); got != moved {
+		t.Fatalf("main = %s, want it left at %s", got, moved)
+	}
+	if st := h.status(t); st.Branch == nil || *st.Branch != "gale/two" || st.Head != head {
+		t.Fatalf("status: %+v", st)
+	}
+	if hasRef(h.bare, "refs/heads/gale/two") || h.fake.Requests("POST /repos/owner/name/pulls") != 0 {
+		t.Fatal("it went on after the base moved")
+	}
+}
+
+// Scenario: Pull request step fails.
+func TestPullRequestStepFails(t *testing.T) {
+	h := newOpened(t)
+	sent := h.head(t)
+	write(t, h.clone, "main.tex", "a revision\n")
+	h.commit(t, "Revise")
+	head := h.head(t)
+	hook := filepath.Join(h.bare, "hooks", "pre-receive")
+	if err := os.WriteFile(hook, []byte("#!/bin/sh\necho 'refused for the test' >&2\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	e := pullFailed(t, h, map[string]string{"title": "Revise", "base": "main", "branch": "gale/revise"}, 409, "rejected")
+	if !slices.Equal(e.Done, []string{"branch", "base"}) || !strings.Contains(e.Message, "pre-receive hook declined") {
+		t.Fatalf("error = %+v", e)
+	}
+	// The completed steps stay; nothing was retried or sent.
+	if st := h.status(t); st.Branch == nil || *st.Branch != "gale/revise" || st.Head != head || st.Upstream != nil {
+		t.Fatalf("status: %+v", st)
+	}
+	if got := gitIn(t, h.clone, "rev-parse", "main"); got != sent {
+		t.Fatalf("main = %s, want %s", got, sent)
+	}
+	if hasRef(h.bare, "refs/heads/gale/revise") || h.fake.Requests("POST /repos/owner/name/pulls") != 0 {
+		t.Fatal("the branch reached GitHub or a pull request was asked for")
+	}
 }
 
 // Scenario: Force-push.
@@ -510,8 +665,6 @@ func TestBranchRemovedOnGitHub(t *testing.T) {
 			t.Errorf("refs of the sent commit: %v", c.Refs)
 		}
 	}
-	// A pull request needs the branch on GitHub again.
-	wantError(t, h.call(t, "POST", testRepo+"/pulls", map[string]string{"title": "Again"}), 409, "not_pushed")
 	// The force-push preview has nothing to erase.
 	if p := ok[previewBody](t, h.call(t, "GET", testRepo+"/git/force-push/preview", nil)); p.RemoteSHA == nil || *p.RemoteSHA != "" || len(p.Commits) != 0 {
 		t.Errorf("force-push preview: %+v", p)

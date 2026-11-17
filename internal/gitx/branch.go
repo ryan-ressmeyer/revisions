@@ -53,6 +53,13 @@ func DeleteBranch(ctx context.Context, dir, name, head string) error {
 	return err
 }
 
+// MoveBranch points the local branch name at the commit to, only while it
+// still points at old.
+func MoveBranch(ctx context.Context, dir, name, to, old string) error {
+	_, err := git(ctx, dir, "update-ref", "refs/heads/"+name, to, old)
+	return err
+}
+
 // Finished is a local branch whose GitHub branch was removed and whose commits
 // GitHub keeps all of.
 type Finished struct {

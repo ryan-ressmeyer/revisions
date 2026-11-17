@@ -23,8 +23,6 @@ const plain: Record<string, string> = {
 		"Someone else's changes reached GitHub first. Get latest to combine them with yours, then Send again.",
 	no_push_permission:
 		"Your GitHub account can read this manuscript but not change it. Ask the author to give your account write access.",
-	not_pushed:
-		"Your branch has commits that are not on GitHub yet. Send them first, so the pull request includes all of your work.",
 	conflicts:
 		"Some files still contain conflict markers, the lines that start with <<<<<<< or >>>>>>>. Edit them to keep the text you want, then commit.",
 	nothing_to_commit: "There are no changes to commit.",

@@ -72,6 +72,7 @@ import {
 	runMove,
 	UNSAVED,
 	Unclean,
+	WRITE_ACCESS,
 } from "./Git";
 import { TexGuidance } from "./Guidance";
 import { type PdfHandle, PdfView } from "./Pdf";
@@ -764,6 +765,24 @@ export function ProjectView({
 			if (isCode(error, "host_unreachable"))
 				setGithub((g) => ({ ...g, unreachable: true }));
 		}
+	}, [id, signedIn]);
+	// On opening, a signed-in account that cannot push learns why it cannot share.
+	useEffect(() => {
+		if (!signedIn) return;
+		let live = true;
+		gitStatus(id).then(
+			(s) =>
+				live &&
+				!s.permissions.push &&
+				!s.authError &&
+				setNotice(
+					`Your GitHub account can read this manuscript but not change it. ${WRITE_ACCESS} You can still edit and commit on this computer.`,
+				),
+			() => {},
+		);
+		return () => {
+			live = false;
+		};
 	}, [id, signedIn]);
 	useEffect(() => {
 		checkGitHub();

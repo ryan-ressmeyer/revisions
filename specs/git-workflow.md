@@ -96,12 +96,6 @@ Leaving a project for Home saves pending text first. A dialog whose action is ru
 
 Text typed in one window while another window switches branch is saved onto the new branch as an uncommitted change, visible in the editor and in Changes & history. This matches how Git carries uncommitted edits across a switch, and is accepted [1, Q14].
 
-### HTTP contract changes
-
-`specs/architecture.md` holds the binding contract. These changes move into it in the same commit as the code that implements them.
-
-- `POST R/pulls`: body gains an optional `branch`. On the base branch, `branch` is required and the request performs the steps of the one-sweep pull request. The base is moved with an expected old value, so a base that moved meanwhile is left alone and reported. Elsewhere, the request sends unsent commits before opening. Errors: 409 `needs_branch` on the base without `branch`, 409 `nothing_to_propose`, 409 `merging`, 409 `branch_exists`, 400 `bad_branch`, 403 `no_push_permission`, and those of push. A failure after a completed step carries `done`, the completed steps among `branch`, `base`, and `sent`. `R/pulls` now changes the clone and is serialized as other changing routes are.
-
 ## Requirements
 
 ### Requirement: Open a shared GitHub URL

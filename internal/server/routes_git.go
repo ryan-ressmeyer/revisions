@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"maps"
 	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -89,7 +91,7 @@ func (s *Server) registerGit(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+R+"/git/discard", change(s.gitDiscard))
 	mux.HandleFunc("GET "+R+"/git/branches/delete/preview", read(s.gitDeletePreview))
 	mux.HandleFunc("POST "+R+"/git/branches/delete", change(s.gitDeleteBranch))
-	mux.HandleFunc("POST "+R+"/pulls", read(s.createPull))
+	mux.HandleFunc("POST "+R+"/pulls", change(s.createPull))
 }
 
 // canPush reports whether the signed-in account may push to the repository.
@@ -428,37 +430,50 @@ func (s *Server) gitMergeAbort(w http.ResponseWriter, r *http.Request, id worksp
 
 // push is the shared tail of push and force-push: it checks the account's
 // permission afresh, pushes the current branch, and answers.
-func (s *Server) push(w http.ResponseWriter, r *http.Request, id workspace.RepoID, dir string, lease *string, rejected string) {
+func (s *Server) push(w http.ResponseWriter, r *http.Request, id workspace.RepoID, dir string, lease *string, rejected func(string) string) {
 	token, ok := s.requireToken(w, r)
 	if !ok {
 		return
 	}
 	st, ok := onBranch(w, r, dir)
-	if !ok {
-		return
-	}
-	allowed, err := s.canPush(r.Context(), id, token, true)
-	if err != nil {
-		hostFailed(w, err)
-		return
-	}
-	if !allowed {
-		writeError(w, http.StatusForbidden, "no_push_permission", "Your GitHub account cannot push to this repository. Ask its owner for write access.")
-		return
-	}
-	err = gitx.Push(r.Context(), dir, s.gitAuth(token), st.Branch, lease)
-	switch {
-	case errors.Is(err, gitx.ErrRejected):
-		writeError(w, http.StatusConflict, "rejected", rejected)
-	case err != nil:
-		s.networkGitFailed(w, r, token, err)
-	default:
+	if ok && s.mayPush(w, r, id, token) && s.send(w, r, token, dir, st.Branch, lease, rejected) {
 		s.writeStatus(w, r, id, dir)
 	}
 }
 
+// mayPush asks GitHub afresh whether the account may push here, and answers
+// 403 no_push_permission when it may not.
+func (s *Server) mayPush(w http.ResponseWriter, r *http.Request, id workspace.RepoID, token string) bool {
+	allowed, err := s.canPush(r.Context(), id, token, true)
+	switch {
+	case err != nil:
+		hostFailed(w, err)
+	case !allowed:
+		writeError(w, http.StatusForbidden, "no_push_permission", "Your GitHub account cannot push to this repository. Ask its owner for write access.")
+	}
+	return allowed && err == nil
+}
+
+// send pushes branch and sets its upstream, or answers with why it could not.
+// rejected words GitHub's refusal, given Git's reason for it.
+func (s *Server) send(w http.ResponseWriter, r *http.Request, token, dir, branch string, lease *string, rejected func(reason string) string) bool {
+	err := gitx.Push(r.Context(), dir, s.gitAuth(token), branch, lease)
+	switch {
+	case errors.Is(err, gitx.ErrRejected):
+		writeError(w, http.StatusConflict, "rejected", rejected(strings.TrimPrefix(err.Error(), gitx.ErrRejected.Error()+": ")))
+	case err != nil:
+		s.networkGitFailed(w, r, token, err)
+	}
+	return err == nil
+}
+
+// says is a rejected wording for send that ignores Git's reason.
+func says(message string) func(string) string {
+	return func(string) string { return message }
+}
+
 func (s *Server) gitPush(w http.ResponseWriter, r *http.Request, id workspace.RepoID, dir string) {
-	s.push(w, r, id, dir, nil, "GitHub has commits that this copy does not have. Pull them, then push again.")
+	s.push(w, r, id, dir, nil, says("GitHub has commits that this copy does not have. Pull them, then push again."))
 }
 
 func (s *Server) gitForcePreview(w http.ResponseWriter, r *http.Request, id workspace.RepoID, dir string) {
@@ -494,7 +509,7 @@ func (s *Server) gitForcePush(w http.ResponseWriter, r *http.Request, id workspa
 		badRequest(w, "A force-push must name the remote commit shown in its preview.")
 		return
 	}
-	s.push(w, r, id, dir, body.ExpectedRemoteSHA, "The branch on GitHub changed after the preview, so nothing was pushed. Review the preview again.")
+	s.push(w, r, id, dir, body.ExpectedRemoteSHA, says("The branch on GitHub changed after the preview, so nothing was pushed. Review the preview again."))
 }
 
 func (s *Server) gitBranch(w http.ResponseWriter, r *http.Request, id workspace.RepoID, dir string) {
@@ -657,11 +672,16 @@ func (s *Server) gitDiscard(w http.ResponseWriter, r *http.Request, id workspace
 	}
 }
 
+// createPull opens a pull request in one sweep. On the base branch it first
+// moves the work onto the new branch body.Branch and the base back to GitHub's;
+// it sends the branch when GitHub lacks any of it; then it asks GitHub. Every
+// refusal comes before the first step; a later failure names the steps done.
 func (s *Server) createPull(w http.ResponseWriter, r *http.Request, id workspace.RepoID, dir string) {
 	var body struct {
-		Title string `json:"title"`
-		Body  string `json:"body"`
-		Base  string `json:"base"`
+		Title  string `json:"title"`
+		Body   string `json:"body"`
+		Base   string `json:"base"`
+		Branch string `json:"branch"` // the new branch, on the base branch only
 	}
 	if !readJSON(w, r, &body) {
 		return
@@ -675,11 +695,13 @@ func (s *Server) createPull(w http.ResponseWriter, r *http.Request, id workspace
 		return
 	}
 	st, ok := onBranch(w, r, dir)
-	if !ok {
+	switch {
+	case !ok:
 		return
-	}
-	if st.Upstream != "origin/"+st.Branch || st.Ahead > 0 {
-		writeError(w, http.StatusConflict, "not_pushed", "Push this branch first, so the pull request includes all of your commits.")
+	case st.Merging:
+		writeError(w, http.StatusConflict, "merging", "A merge is not finished. Commit it or undo it before opening a pull request.")
+		return
+	case !s.mayPush(w, r, id, token):
 		return
 	}
 	ctx, h, repo := r.Context(), s.auth.host, host.Repo{Owner: id.Owner, Name: id.Name}
@@ -691,17 +713,105 @@ func (s *Server) createPull(w http.ResponseWriter, r *http.Request, id workspace
 		}
 		body.Base = info.DefaultBranch
 	}
-	pull, err := h.CreatePullRequest(ctx, token, repo, host.NewPull{Title: body.Title, Body: body.Body, Head: st.Branch, Base: body.Base})
+	baseSHA, found := "", gitx.CheckBranchName(ctx, dir, body.Base) == nil
+	if found {
+		var err error
+		if baseSHA, found, err = gitx.Resolve(ctx, dir, "refs/remotes/origin/"+body.Base); err != nil {
+			gitFailed(w, err)
+			return
+		}
+	}
+	if !found {
+		writeError(w, http.StatusUnprocessableEntity, "pull_rejected", "GitHub did not open the pull request: it has no branch "+body.Base+" as of the last check.")
+		return
+	}
+	missing, err := gitx.Run(ctx, dir, "rev-list", "--count", st.Head, "--not", baseSHA)
+	if err != nil {
+		gitFailed(w, err)
+		return
+	}
+	if strings.TrimSpace(missing) == "0" {
+		writeError(w, http.StatusConflict, "nothing_to_propose", "There is nothing to propose yet: GitHub's "+body.Base+" already has every commit on this branch.")
+		return
+	}
+	head, onBase := st.Branch, st.Branch == body.Base
+	if onBase {
+		_, local, _ := gitx.Resolve(ctx, dir, "refs/heads/"+body.Branch)
+		_, remote, _ := gitx.Resolve(ctx, dir, "refs/remotes/origin/"+body.Branch)
+		switch {
+		case body.Branch == "":
+			writeError(w, http.StatusConflict, "needs_branch", "You are on "+body.Base+", the branch the pull request goes into. Name a new branch for your commits.")
+			return
+		case gitx.CheckBranchName(ctx, dir, body.Branch) != nil:
+			writeError(w, http.StatusBadRequest, "bad_branch", "That is not a valid branch name. Use letters, digits, hyphens, and slashes.")
+			return
+		case local || remote:
+			writeError(w, http.StatusConflict, "branch_exists", "A branch with that name already exists here or on GitHub. Choose another name.")
+			return
+		}
+		head = body.Branch
+	}
+
+	// From here each step answers into steps, so a failure can name the
+	// steps already done.
+	steps, done := httptest.NewRecorder(), []string{}
+	defer func() { answerSteps(w, steps, done) }()
+	if onBase && !s.holdSaves(func() bool {
+		// Uncommitted changes come along to the new branch.
+		if err := gitx.CreateBranch(ctx, dir, body.Branch, "", false); err != nil {
+			gitFailed(steps, err)
+			return false
+		}
+		done = append(done, "branch")
+		// Only while the base is still where the new branch began.
+		if err := gitx.MoveBranch(ctx, dir, body.Base, baseSHA, st.Head); err != nil {
+			if now, _, _ := gitx.Resolve(ctx, dir, "refs/heads/"+body.Base); now != st.Head {
+				writeError(steps, http.StatusConflict, "base_moved", "Branch "+body.Base+" changed while the pull request was being prepared, so it was left as it is.")
+			} else {
+				gitFailed(steps, err)
+			}
+			return false
+		}
+		done = append(done, "base")
+		return true
+	}) {
+		return
+	}
+	if onBase || st.Upstream != "origin/"+st.Branch || st.Ahead > 0 {
+		if !s.send(steps, r, token, dir, head, nil, func(reason string) string {
+			return "GitHub refused the branch: " + reason + "."
+		}) {
+			return
+		}
+		done = append(done, "sent")
+	}
+	pull, err := h.CreatePullRequest(ctx, token, repo, host.NewPull{Title: body.Title, Body: body.Body, Head: head, Base: body.Base})
 	var refused *host.Error
 	switch {
 	case errors.As(err, &refused) && refused.Status == http.StatusUnprocessableEntity:
 		// For example: a pull request for this branch already exists.
-		writeError(w, http.StatusUnprocessableEntity, "pull_rejected", "GitHub did not open the pull request: "+refused.Message)
+		writeError(steps, http.StatusUnprocessableEntity, "pull_rejected", "GitHub did not open the pull request: "+refused.Message)
 	case err != nil:
-		hostFailed(w, s.hostFailure(ctx, token, err))
+		hostFailed(steps, s.hostFailure(ctx, token, err))
 	default:
-		writeJSON(w, http.StatusOK, pull)
+		writeJSON(steps, http.StatusOK, pull)
 	}
+}
+
+// answerSteps sends the answer held in steps, adding done, the steps
+// completed, to an error's object when there are any.
+func answerSteps(w http.ResponseWriter, steps *httptest.ResponseRecorder, done []string) {
+	var body struct {
+		Error map[string]any `json:"error"`
+	}
+	if steps.Code >= 400 && len(done) > 0 && json.Unmarshal(steps.Body.Bytes(), &body) == nil && body.Error != nil {
+		body.Error["done"] = done
+		writeJSON(w, steps.Code, body)
+		return
+	}
+	maps.Copy(w.Header(), steps.Header())
+	w.WriteHeader(steps.Code)
+	w.Write(steps.Body.Bytes())
 }
 
 type deletePreview struct {

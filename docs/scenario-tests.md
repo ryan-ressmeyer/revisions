@@ -184,7 +184,7 @@ Every Scenario in `specs/overview.md` and then `specs/git-workflow.md`, grouped 
 | Scenario | Test |
 |---|---|
 | Device sign-in | `internal/server/routes_auth_test.go: TestDeviceSignIn`; `internal/server/auth_recovery_test.go: TestDeviceCredentialSurvivesTransientIdentityFailure`, `TestDeviceIdentityRejectionDisconnectsWithoutOldAccountFallback`; `web/e2e/start.spec.ts: "Device sign-in: shows the one-time code and signs in once GitHub confirms it"` |
-| Read-only collaborator | `internal/server/routes_git_test.go: TestReadOnlyCollaborator`; `web/e2e/git.spec.ts: "Read-only collaborator: no Send, Force-push, or pull request, and a reason"` |
+| Read-only collaborator | `internal/server/routes_git_test.go: TestReadOnlyCollaborator`; `web/e2e/git.spec.ts: "No write access: opening the project says sharing needs write access, the commit box repeats it, and Send, Force-push, and pull requests are not offered"` |
 | Expiring credential | `internal/host/github/github_test.go: TestExpiringDeviceCredentialAndRefresh`; `internal/settings/token_test.go: TestCredentialRecordSurvivesRestartAndLegacyMigration`; `internal/server/auth_recovery_test.go: TestRenewalRotatesDurablyOnceAcrossConcurrentRequests`, `TestLateRejectionCannotEraseRenewedCredential`, `TestLatePermissionResponseCannotRefillNewAccountCache`, `TestReconnectRotatesAndRefreshesPermissionsWithoutChangingAuthor` |
 | Rejected cached sign-in | `internal/server/auth_recovery_test.go: TestWarmIdentityRejectionIsActionable`, `TestLocalHistoryAndStatusExposeAuthLoss`; `internal/server/network_auth_test.go: TestFailedNetworkGitProvesAuthWithTheOperationToken` |
 | Reconnect in place | `web/e2e/auth-recovery.spec.ts: "Reconnect keeps the pasted URL and never replays Open"`, `"Reconnect and cancellation retain stale-save text and the same editor undo history"`, `"Sign-out and reconnect retain pending text and editor identity"`, `"Sign-out and reconnect retain failed text and editor identity"`; `internal/server/auth_recovery_test.go: TestCancelAndSignOutEndDeviceFlow` |
@@ -255,11 +255,11 @@ Requirements from here on are in `specs/git-workflow.md`.
 
 | Scenario | Test |
 |---|---|
-| Open a pull request | `pending` |
-| Pull request from the shared branch | `pending` |
-| Nothing to propose | `pending` |
-| Pull request step fails | `pending` |
-| No write access | `pending` |
+| Open a pull request | `internal/server/routes_git_test.go: TestOpenAPullRequest`; `web/e2e/git.spec.ts: "Open a pull request: a branch never sent is sent, and its pull request shows in the graph"` |
+| Pull request from the shared branch | `internal/server/routes_git_test.go: TestPullRequestFromTheSharedBranch`, `TestPullRequestLeavesAMovedBaseAlone`; `web/e2e/git.spec.ts: "Pull request from the shared branch: the unsent commits move to a new branch, main matches GitHub again, and the pull request opens"` |
+| Nothing to propose | `internal/server/routes_git_test.go: TestPullRequestRefusesBeforeAnyStep`; `web/e2e/git.spec.ts: "Nothing to propose: GitHub already has every commit, so nothing changes and the page says so"` |
+| Pull request step fails | `internal/server/routes_git_test.go: TestPullRequestStepFails`; `web/e2e/git.spec.ts: "Pull request step fails: the page says the branch was made and main moved, nothing was sent, and why, with no retry"` |
+| No write access | `internal/server/routes_git_test.go: TestReadOnlyCollaborator`, `TestPullRequestRefusesBeforeAnyStep`; `web/e2e/git.spec.ts: "No write access: opening the project says sharing needs write access, the commit box repeats it, and Send, Force-push, and pull requests are not offered"` |
 
 ## Delete a local branch
 
