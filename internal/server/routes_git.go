@@ -26,6 +26,12 @@ type gitDeps struct {
 	// ponytail: one lock for all clones. Make it per repository if two
 	// manuscripts are ever worked on at once and one blocks the other.
 	mu sync.Mutex
+	// worktree orders saves around the Git operations that change the working
+	// copy or HEAD. A save holds it for reading; such an operation holds it,
+	// through holdSaves, for its uncommitted-changes check and the change.
+	// Fetches, pushes, and calls to GitHub stay outside it, so a save never
+	// waits on the network. Take mu first.
+	worktree sync.RWMutex
 
 	permMu sync.Mutex
 	perms  map[workspace.RepoID]pushPermission
@@ -127,6 +133,15 @@ func (s *Server) commitIdentity(ctx context.Context) gitx.Identity {
 		name = user.Login
 	}
 	return gitx.Identity{Name: name, Email: s.auth.host.CommitEmail(user)}
+}
+
+// holdSaves runs step while saves wait. step is a Git operation's check for
+// uncommitted changes and the change itself; nothing in it may reach the
+// network. It reports what step returns: true when the change was made.
+func (s *Server) holdSaves(step func() bool) bool {
+	s.git.worktree.Lock()
+	defer s.git.worktree.Unlock()
+	return step()
 }
 
 // status reads the clone's status, or answers with the failure.
@@ -279,20 +294,26 @@ func (s *Server) gitCommit(w http.ResponseWriter, r *http.Request, id workspace.
 		badRequest(w, "Describe the change in a commit message.")
 		return
 	}
-	st, ok := onBranch(w, r, dir)
-	switch {
-	case !ok:
-	case len(st.Conflicts) > 0:
-		writeError(w, http.StatusConflict, "conflicts",
-			"Some files still contain conflict markers (<<<<<<< and >>>>>>>). Edit them to keep the text you want, then commit.",
-			map[string]any{"files": st.Conflicts})
-	case !st.Dirty():
-		writeError(w, http.StatusConflict, "nothing_to_commit", "There are no changes to commit.")
-	default:
-		if err := gitx.Commit(r.Context(), dir, body.Message, s.commitIdentity(r.Context())); err != nil {
-			gitFailed(w, err)
-			return
+	who := s.commitIdentity(r.Context()) // may ask GitHub, so before saves wait
+	if s.holdSaves(func() bool {
+		st, ok := onBranch(w, r, dir)
+		switch {
+		case !ok:
+		case len(st.Conflicts) > 0:
+			writeError(w, http.StatusConflict, "conflicts",
+				"Some files still contain conflict markers (<<<<<<< and >>>>>>>). Edit them to keep the text you want, then commit.",
+				map[string]any{"files": st.Conflicts})
+		case !st.Dirty():
+			writeError(w, http.StatusConflict, "nothing_to_commit", "There are no changes to commit.")
+		default:
+			err := gitx.Commit(r.Context(), dir, body.Message, who)
+			if err != nil {
+				gitFailed(w, err)
+			}
+			return err == nil
 		}
+		return false
+	}) {
 		s.writeStatus(w, r, id, dir)
 	}
 }
@@ -324,43 +345,52 @@ func (s *Server) gitPull(w http.ResponseWriter, r *http.Request, id workspace.Re
 		s.networkGitFailed(w, r, token, err)
 		return
 	}
-	st, ok := onBranch(w, r, dir)
-	switch {
-	case !ok:
-		return
-	case st.UpstreamGone:
-		writeError(w, http.StatusConflict, "upstream_gone", "This branch was removed from GitHub, probably because its pull request was closed or merged. Your copy still has it. Switch to another branch, or Send to put it back on GitHub.")
-		return
-	case st.Upstream == "":
-		writeError(w, http.StatusConflict, "no_upstream", "This branch is not on GitHub yet, so there is nothing to pull.")
-		return
-	}
-	if err := gitx.Merge(ctx, dir, "@{upstream}", s.commitIdentity(ctx)); err != nil {
-		if st.Dirty() {
-			// Git refuses to merge over uncommitted changes to the same files.
-			dirty(w, st, "The incoming changes touch files you have changed. Commit or discard your changes, then pull again.")
-		} else {
-			gitFailed(w, err)
+	who := s.commitIdentity(ctx)
+	if s.holdSaves(func() bool {
+		st, ok := onBranch(w, r, dir)
+		switch {
+		case !ok:
+			return false
+		case st.UpstreamGone:
+			writeError(w, http.StatusConflict, "upstream_gone", "This branch was removed from GitHub, probably because its pull request was closed or merged. Your copy still has it. Switch to another branch, or Send to put it back on GitHub.")
+			return false
+		case st.Upstream == "":
+			writeError(w, http.StatusConflict, "no_upstream", "This branch is not on GitHub yet, so there is nothing to pull.")
+			return false
 		}
-		return
+		if err := gitx.Merge(ctx, dir, "@{upstream}", who); err != nil {
+			if st.Dirty() {
+				// Git refuses to merge over uncommitted changes to the same files.
+				dirty(w, st, "The incoming changes touch files you have changed. Commit or discard your changes, then pull again.")
+			} else {
+				gitFailed(w, err)
+			}
+			return false
+		}
+		return true
+	}) {
+		s.writeStatus(w, r, id, dir)
 	}
-	s.writeStatus(w, r, id, dir)
 }
 
 func (s *Server) gitMergeAbort(w http.ResponseWriter, r *http.Request, id workspace.RepoID, dir string) {
-	st, ok := status(w, r, dir)
-	if !ok {
-		return
+	if s.holdSaves(func() bool {
+		st, ok := status(w, r, dir)
+		switch {
+		case !ok:
+			return false
+		case !st.Merging:
+			writeError(w, http.StatusConflict, "not_merging", "No merge is in progress.")
+			return false
+		}
+		err := gitx.MergeAbort(r.Context(), dir)
+		if err != nil {
+			gitFailed(w, err)
+		}
+		return err == nil
+	}) {
+		s.writeStatus(w, r, id, dir)
 	}
-	if !st.Merging {
-		writeError(w, http.StatusConflict, "not_merging", "No merge is in progress.")
-		return
-	}
-	if err := gitx.MergeAbort(r.Context(), dir); err != nil {
-		gitFailed(w, err)
-		return
-	}
-	s.writeStatus(w, r, id, dir)
 }
 
 // push is the shared tail of push and force-push: it checks the account's
@@ -442,16 +472,20 @@ func (s *Server) gitBranch(w http.ResponseWriter, r *http.Request, id workspace.
 		return
 	}
 	ctx := r.Context()
-	if _, exists, _ := gitx.Resolve(ctx, dir, "refs/heads/"+body.Name); exists {
-		writeError(w, http.StatusConflict, "branch_exists", "A branch with that name already exists.")
-		return
-	}
-	switch err := gitx.CreateBranch(ctx, dir, body.Name, "", false); {
-	case errors.Is(err, gitx.ErrBadBranch):
-		writeError(w, http.StatusBadRequest, "bad_branch", "That is not a valid branch name. Use letters, digits, hyphens, and slashes.")
-	case err != nil:
-		gitFailed(w, err)
-	default:
+	if s.holdSaves(func() bool {
+		if _, exists, _ := gitx.Resolve(ctx, dir, "refs/heads/"+body.Name); exists {
+			writeError(w, http.StatusConflict, "branch_exists", "A branch with that name already exists.")
+			return false
+		}
+		err := gitx.CreateBranch(ctx, dir, body.Name, "", false)
+		switch {
+		case errors.Is(err, gitx.ErrBadBranch):
+			writeError(w, http.StatusBadRequest, "bad_branch", "That is not a valid branch name. Use letters, digits, hyphens, and slashes.")
+		case err != nil:
+			gitFailed(w, err)
+		}
+		return err == nil
+	}) {
 		s.writeStatus(w, r, id, dir)
 	}
 }
@@ -469,58 +503,62 @@ func (s *Server) gitCheckout(w http.ResponseWriter, r *http.Request, id workspac
 		return
 	}
 	ctx := r.Context()
-	st, ok := status(w, r, dir)
-	if !ok {
-		return
-	}
-	if body.Commit != "" {
-		// A snapshot: the commit checked out with no branch (detached HEAD).
-		sha, found := "", shaPattern.MatchString(body.Commit)
-		if found {
+	if s.holdSaves(func() bool {
+		st, ok := status(w, r, dir)
+		if !ok {
+			return false
+		}
+		if body.Commit != "" {
+			// A snapshot: the commit checked out with no branch (detached HEAD).
+			sha, found := "", shaPattern.MatchString(body.Commit)
+			if found {
+				var err error
+				if sha, found, err = gitx.Resolve(ctx, dir, body.Commit+"^{commit}"); err != nil {
+					gitFailed(w, err)
+					return false
+				}
+			}
+			switch {
+			case !found:
+				writeError(w, http.StatusNotFound, "not_found", "This copy of the repository has no such commit.")
+				return false
+			case st.Branch == "" && st.Head == sha:
+			case st.Dirty():
+				dirty(w, st, "You have changes that are not committed. Commit or discard them before looking at another version.")
+				return false
+			default:
+				if err := gitx.Detach(ctx, dir, sha); err != nil {
+					gitFailed(w, err)
+					return false
+				}
+			}
+		} else if st.Branch != body.Branch {
+			_, local, _ := gitx.Resolve(ctx, dir, "refs/heads/"+body.Branch)
+			remote := "refs/remotes/origin/" + body.Branch
+			_, onRemote, _ := gitx.Resolve(ctx, dir, remote)
 			var err error
-			if sha, found, err = gitx.Resolve(ctx, dir, body.Commit+"^{commit}"); err != nil {
+			switch {
+			case !local && !onRemote:
+				writeError(w, http.StatusNotFound, "not_found", "There is no branch with that name.")
+				return false
+			case st.Dirty():
+				dirty(w, st, "You have changes that are not committed. Commit or discard them before switching branches.")
+				return false
+			case local:
+				err = gitx.Switch(ctx, dir, body.Branch)
+			default:
+				// The branch exists only on GitHub: create a local one that tracks it.
+				err = gitx.CreateBranch(ctx, dir, body.Branch, remote, true)
+			}
+			if err != nil {
 				gitFailed(w, err)
-				return
+				return false
 			}
 		}
-		switch {
-		case !found:
-			writeError(w, http.StatusNotFound, "not_found", "This copy of the repository has no such commit.")
-			return
-		case st.Branch == "" && st.Head == sha:
-		case st.Dirty():
-			dirty(w, st, "You have changes that are not committed. Commit or discard them before looking at another version.")
-			return
-		default:
-			if err := gitx.Detach(ctx, dir, sha); err != nil {
-				gitFailed(w, err)
-				return
-			}
-		}
-	} else if st.Branch != body.Branch {
-		_, local, _ := gitx.Resolve(ctx, dir, "refs/heads/"+body.Branch)
-		remote := "refs/remotes/origin/" + body.Branch
-		_, onRemote, _ := gitx.Resolve(ctx, dir, remote)
-		var err error
-		switch {
-		case !local && !onRemote:
-			writeError(w, http.StatusNotFound, "not_found", "There is no branch with that name.")
-			return
-		case st.Dirty():
-			dirty(w, st, "You have changes that are not committed. Commit or discard them before switching branches.")
-			return
-		case local:
-			err = gitx.Switch(ctx, dir, body.Branch)
-		default:
-			// The branch exists only on GitHub: create a local one that tracks it.
-			err = gitx.CreateBranch(ctx, dir, body.Branch, remote, true)
-		}
-		if err != nil {
-			gitFailed(w, err)
-			return
-		}
+		return true
+	}) {
+		s.writeStatus(w, r, id, dir)
 	}
-	s.writeStatus(w, r, id, dir)
 }
 
 type discardPreview struct {
@@ -565,21 +603,25 @@ func (s *Server) gitDiscard(w http.ResponseWriter, r *http.Request, id workspace
 		badRequest(w, "A discard must name the changes shown in its preview.")
 		return
 	}
-	// Saves do not take the Git lock, so an autosave landing between this
-	// check and the reset still goes; the UI saves before it previews.
-	p, ok := previewDiscard(w, r, dir)
-	if !ok {
-		return
+	// A save lands before the check, and refuses the discard, or after the
+	// reset, as stale.
+	if s.holdSaves(func() bool {
+		p, ok := previewDiscard(w, r, dir)
+		switch {
+		case !ok:
+			return false
+		case p.Fingerprint != body.Fingerprint:
+			writeError(w, http.StatusConflict, "changed", "Your changes are different from the ones shown, so nothing was discarded. Review them again.")
+			return false
+		}
+		err := gitx.Discard(r.Context(), dir)
+		if err != nil {
+			gitFailed(w, err)
+		}
+		return err == nil
+	}) {
+		s.writeStatus(w, r, id, dir)
 	}
-	if p.Fingerprint != body.Fingerprint {
-		writeError(w, http.StatusConflict, "changed", "Your changes are different from the ones shown, so nothing was discarded. Review them again.")
-		return
-	}
-	if err := gitx.Discard(r.Context(), dir); err != nil {
-		gitFailed(w, err)
-		return
-	}
-	s.writeStatus(w, r, id, dir)
 }
 
 func (s *Server) createPull(w http.ResponseWriter, r *http.Request, id workspace.RepoID, dir string) {

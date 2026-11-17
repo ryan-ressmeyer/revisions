@@ -758,7 +758,21 @@ export function ProjectView({
 	return (
 		<div className="project">
 			<header className="topbar">
-				<a className="brand" href="#/">
+				{/* biome-ignore lint/a11y/useValidAnchor: a real link to Home that saves before it navigates */}
+				<a
+					className="brand"
+					href="#/"
+					onClick={async (e) => {
+						if (e.ctrlKey || e.metaKey || e.shiftKey) return;
+						// Home appears only once the text is saved where it was typed.
+						e.preventDefault();
+						if (await flushOpen()) window.location.hash = "#/";
+						else
+							setNotice(
+								"Your latest changes are not saved yet, so Revisions stayed on this manuscript. See the message above the editor.",
+							);
+					}}
+				>
 					Revisions
 				</a>
 				<button

@@ -2,13 +2,18 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"maps"
+	"net"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 type statusBody struct {
@@ -729,5 +734,170 @@ func TestForcePushPreviewListsCommitsWithOddSubjects(t *testing.T) {
 	}
 	if !found {
 		t.Error("the log leaves the commit out")
+	}
+}
+
+// slowGit puts a git first on PATH that, for the named subcommands, creates
+// the returned marker file and sleeps before running the real git, so a test
+// can act while such a command is about to change the clone.
+func slowGit(t *testing.T, subcommands ...string) (entered string) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("the slowing git is a shell script")
+	}
+	real, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	entered = filepath.Join(dir, "entered")
+	script := fmt.Sprintf("#!/bin/sh\ncase \"$1\" in %s) touch '%s'; sleep 0.4;; esac\nexec '%s' \"$@\"\n",
+		strings.Join(subcommands, "|"), entered, real)
+	if err := os.WriteFile(filepath.Join(dir, "git"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return entered
+}
+
+// waitForFile waits until path exists.
+func waitForFile(t *testing.T, path string) {
+	t.Helper()
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(5 * time.Millisecond) {
+		if _, err := os.Stat(path); err == nil {
+			return
+		}
+	}
+	t.Fatalf("%s never appeared", path)
+}
+
+// background sends a request on its own goroutine; the answer arrives on the channel.
+func (h *hosted) background(t *testing.T, method, path string, body any) <-chan *httptest.ResponseRecorder {
+	answer := make(chan *httptest.ResponseRecorder, 1)
+	go func() { answer <- h.call(t, method, path, body) }()
+	return answer
+}
+
+func (h *hosted) save(t *testing.T, path, base, text string) *httptest.ResponseRecorder {
+	t.Helper()
+	return h.call(t, "PUT", testRepo+"/file?path="+path, map[string]string{"baseHash": sha([]byte(base)), "text": text})
+}
+
+func (h *hosted) read(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(h.clone, path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
+}
+
+// Scenario: Discard while another window types.
+func TestDiscardWhileAnotherWindowTypes(t *testing.T) {
+	h := newOpened(t)
+	unsaved := "a paragraph to throw away\n"
+	write(t, h.clone, "main.tex", unsaved)
+	preview := ok[struct{ Fingerprint string }](t, h.call(t, "GET", testRepo+"/git/discard/preview", nil))
+
+	entered := slowGit(t, "reset")
+	discard := h.background(t, "POST", testRepo+"/git/discard", map[string]string{"fingerprint": preview.Fingerprint})
+	waitForFile(t, entered)
+	typed := "typed in another window\n"
+	saved := h.save(t, "main.tex", unsaved, typed)
+	discarded := <-discard
+
+	if saved.Code == 200 {
+		if discarded.Code != 409 || h.read(t, "main.tex") != typed {
+			t.Fatalf("the save was accepted, then the discard answered %d and main.tex no longer holds the typed text: it is lost", discarded.Code)
+		}
+		wantError(t, discarded, 409, "changed")
+		return
+	}
+	wantError(t, saved, 409, "stale")
+	if st := ok[statusBody](t, discarded); len(st.Files) != 0 {
+		t.Fatalf("after the discard: %s", st.files())
+	}
+}
+
+// Scenario: Save during View this version.
+func TestSaveDuringViewThisVersion(t *testing.T) {
+	h := newOpened(t)
+	earlier := h.head(t)
+	// A later commit leaves main.tex as it was, so Git would carry an
+	// uncommitted change to it into the earlier version.
+	write(t, h.clone, "later-notes.txt", "later\n")
+	gitIn(t, h.clone, "add", "later-notes.txt")
+	gitIn(t, h.clone, "commit", "--quiet", "-m", "Later notes")
+	before := h.read(t, "main.tex")
+
+	entered := slowGit(t, "switch")
+	view := h.background(t, "POST", testRepo+"/git/checkout", map[string]string{"commit": earlier})
+	waitForFile(t, entered)
+	typed := "typed while the earlier version opens\n"
+	saved := h.save(t, "main.tex", before, typed)
+	viewed := <-view
+
+	if saved.Code == 200 {
+		if viewed.Code != 409 {
+			t.Fatalf("the save was accepted, then View this version answered %d: the text went into the snapshot", viewed.Code)
+		}
+		wantError(t, viewed, 409, "dirty")
+		if h.read(t, "main.tex") != typed || gitIn(t, h.clone, "branch", "--show-current") != "main" {
+			t.Fatal("the save landed first, yet the clone left main or lost the text")
+		}
+		return
+	}
+	wantError(t, saved, 409, "detached")
+	if st := ok[statusBody](t, viewed); st.Branch != nil || st.Head != earlier || len(st.Files) != 0 {
+		t.Fatalf("the snapshot: %+v", st)
+	}
+	if h.read(t, "main.tex") != before {
+		t.Fatal("the refused save changed the snapshot")
+	}
+}
+
+// Scenario: Save during a slow fetch.
+func TestSaveDuringASlowFetch(t *testing.T) {
+	h := newOpened(t)
+	// "GitHub" accepts the connection and never answers.
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	conns := make(chan net.Conn, 8)
+	go func() {
+		for {
+			c, err := l.Accept()
+			if err != nil {
+				return
+			}
+			conns <- c
+		}
+	}()
+	gitIn(t, h.clone, "remote", "set-url", "origin", "http://"+l.Addr().String()+"/owner/name.git")
+	fetch := h.background(t, "POST", testRepo+"/git/fetch", nil)
+	hung := <-conns
+
+	before := h.read(t, "main.tex")
+	saved := make(chan *httptest.ResponseRecorder, 1)
+	go func() { saved <- h.save(t, "main.tex", before, "typed while GitHub is slow\n") }()
+	var rec *httptest.ResponseRecorder
+	select {
+	case rec = <-saved:
+	case <-time.After(2 * time.Second):
+	}
+	// Let the fetch fail, whatever the save did.
+	l.Close()
+	hung.Close()
+	for len(conns) > 0 {
+		(<-conns).Close()
+	}
+	if rec == nil {
+		<-saved
+		t.Fatal("the save waited for the fetch")
+	}
+	ok[saveResult](t, rec)
+	if got := <-fetch; got.Code != 502 {
+		t.Fatalf("the fetch answered %d %s", got.Code, got.Body)
 	}
 }

@@ -647,6 +647,9 @@ func (s *Server) open(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// The fetches are done: saves wait from the dirty check to the checkout.
+	s.git.worktree.Lock()
+	defer s.git.worktree.Unlock()
 	st, err := gitx.GetStatus(ctx, dir)
 	if err != nil {
 		gitFailed(w, err)

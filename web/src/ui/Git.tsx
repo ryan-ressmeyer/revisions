@@ -1032,15 +1032,18 @@ function CommitView({
 	);
 }
 
-/** A native modal dialog that is open while mounted. */
+/** A native modal dialog that is open while mounted. While `busy`, its
+ * action is running and Escape does not close it. */
 export function Modal({
 	title,
 	wide = false,
+	busy = false,
 	onClose,
 	children,
 }: {
 	title: string;
 	wide?: boolean;
+	busy?: boolean;
 	onClose: () => void;
 	children: ReactNode;
 }) {
@@ -1048,6 +1051,8 @@ export function Modal({
 	const titleId = useId();
 	const closeRef = useRef(onClose);
 	closeRef.current = onClose;
+	const busyRef = useRef(busy);
+	busyRef.current = busy;
 	// A layout effect, so close() runs while the dialog is still in the page
 	// and the browser returns focus to the button that opened it.
 	useLayoutEffect(() => {
@@ -1055,6 +1060,16 @@ export function Modal({
 		d?.showModal();
 		return () => d?.close();
 	}, []);
+	// Escape is stopped before the browser turns it into a cancel, which a
+	// repeated press could make uncancellable.
+	useEffect(() => {
+		if (!busy) return;
+		const hold = (event: globalThis.KeyboardEvent) => {
+			if (event.key === "Escape") event.preventDefault();
+		};
+		window.addEventListener("keydown", hold, true);
+		return () => window.removeEventListener("keydown", hold, true);
+	}, [busy]);
 	return (
 		<dialog
 			ref={ref}
@@ -1062,7 +1077,7 @@ export function Modal({
 			className={wide ? "wide" : undefined}
 			onCancel={(e) => {
 				e.preventDefault();
-				closeRef.current();
+				if (!busyRef.current) closeRef.current();
 			}}
 		>
 			<h2 id={titleId}>{title}</h2>
@@ -1110,7 +1125,7 @@ function BranchDialog({
 	};
 
 	return (
-		<Modal title="Branches" onClose={onClose}>
+		<Modal title="Branches" busy={busy} onClose={onClose}>
 			<p className="muted">
 				A branch is a separate, named line of work.{" "}
 				{current ? (
@@ -1264,7 +1279,7 @@ function PullDialog({
 		);
 	}
 	return (
-		<Modal title="Open a pull request" onClose={onClose}>
+		<Modal title="Open a pull request" busy={busy} onClose={onClose}>
 			<p className="muted">
 				A pull request asks the author to review your branch and take it into
 				the manuscript.
@@ -1392,6 +1407,7 @@ function ForcePushDialog({
 		<Modal
 			title="Force-push: replace the branch on GitHub"
 			wide
+			busy={busy}
 			onClose={onClose}
 		>
 			{problem && <ProblemBox problem={problem} />}
@@ -1515,7 +1531,7 @@ function DiscardDialog({
 
 	const files = preview?.files ?? [];
 	return (
-		<Modal title="Discard your changes?" wide onClose={onClose}>
+		<Modal title="Discard your changes?" wide busy={busy} onClose={onClose}>
 			{problem && <ProblemBox problem={problem} />}
 			{!preview ? (
 				!problem && (

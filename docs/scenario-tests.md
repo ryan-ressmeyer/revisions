@@ -280,11 +280,11 @@ Requirements from here on are in `specs/git-workflow.md`.
 
 | Scenario | Test |
 |---|---|
-| Discard while another window types | `pending` |
-| Save during View this version | `pending` |
-| Leave with pending text | `pending` |
-| Escape while working | `pending` |
-| Save during a slow fetch | `pending` |
+| Discard while another window types | `internal/server/routes_git_test.go: TestDiscardWhileAnotherWindowTypes` |
+| Save during View this version | `internal/server/routes_git_test.go: TestSaveDuringViewThisVersion` |
+| Leave with pending text | `web/e2e/git.spec.ts: "Leave with pending text: going Home saves the text on its branch first"` |
+| Escape while working | `web/e2e/git.spec.ts: "Escape while working: the Branches dialog stays open until its switch finishes"` |
+| Save during a slow fetch | `internal/server/routes_git_test.go: TestSaveDuringASlowFetch` |
 
 ## Git operations
 

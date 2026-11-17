@@ -624,3 +624,58 @@ test("Snapshot: a commit link opens a read-only snapshot, and a branch from it c
 		"Note on the snapshot",
 	);
 });
+
+test("Leave with pending text: going Home saves the text on its branch first", async ({
+	page,
+	server,
+}) => {
+	await open(page);
+	await editor(page).click();
+	await page.keyboard.press("Control+Home");
+	await page.keyboard.type("% typed just before leaving\n");
+	// Well inside the 1 s autosave delay.
+	await topbar(page).getByRole("link", { name: "Revisions" }).click();
+	await expect(page.getByLabel("GitHub link")).toBeVisible();
+	expect(onDisk(server)).toMatch(/^% typed just before leaving\n/);
+	expect(git(server.paper, "branch", "--show-current")).toBe("main");
+});
+
+test.describe("slow switch", () => {
+	// The server's git sleeps 2 s before every switch.
+	const shim = mkdtempSync(join(tmpdir(), "revisions-slow-git-"));
+	const real = execFileSync("sh", ["-c", "command -v git"], {
+		encoding: "utf8",
+	}).trim();
+	writeFileSync(
+		join(shim, "git"),
+		`#!/bin/sh\n[ "$1" = switch ] && sleep 2\nexec '${real}' "$@"\n`,
+		{ mode: 0o755 },
+	);
+	test.use({ serverEnv: { PATH: `${shim}:${process.env.PATH}` } });
+	test.afterAll(() => rmSync(shim, { recursive: true, force: true }));
+
+	test("Escape while working: the Branches dialog stays open until its switch finishes", async ({
+		page,
+		server,
+	}) => {
+		await open(page);
+		git(server.paper, "branch", "draft");
+		const p = await openPanel(page);
+		await p.getByRole("button", { name: "Branch…" }).click();
+		const dialog = page.getByRole("dialog", { name: "Branches" });
+		const draft = dialog.getByRole("button", { name: "Switch to draft" });
+		await draft.click();
+		await expect(draft).toBeDisabled();
+
+		// Twice: Chrome may close a dialog on a repeated Escape even after refusing one.
+		await page.keyboard.press("Escape");
+		await page.keyboard.press("Escape");
+		await page.waitForTimeout(300);
+		await expect(dialog).toBeVisible();
+		expect(git(server.paper, "branch", "--show-current")).toBe("main");
+
+		await expect(dialog).toBeHidden({ timeout: 10_000 });
+		await expect(topbar(page).getByText("on branch draft")).toBeVisible();
+		expect(git(server.paper, "branch", "--show-current")).toBe("draft");
+	});
+});

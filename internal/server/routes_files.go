@@ -163,6 +163,10 @@ func (s *Server) putFile(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &body) {
 		return
 	}
+	// The save waits while Git changes the working copy or HEAD, so it lands
+	// wholly before or after (see gitDeps.worktree).
+	s.git.worktree.RLock()
+	defer s.git.worktree.RUnlock()
 	// A snapshot shows an earlier version and is never changed. Without Git
 	// there is no snapshot to protect, so the save goes on.
 	if g, err := workspace.GitStatus(root); err == nil && g.Branch == nil && g.Head != "" {
