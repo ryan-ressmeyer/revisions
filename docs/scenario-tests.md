@@ -239,9 +239,9 @@ Requirements from here on are in `specs/git-workflow.md`.
 
 | Scenario | Test |
 |---|---|
-| Check on opening | `pending` |
-| Periodic check | `pending` |
-| GitHub unreachable | `pending` |
+| Check on opening | `web/e2e/git.spec.ts: "Check on opening: commits pushed while the project was closed show as waiting, without pressing anything"` |
+| Periodic check | `web/e2e/git.spec.ts: "Periodic check: a commit pushed while the project is open shows as waiting within 5 minutes"` |
+| GitHub unreachable | `web/e2e/git.spec.ts: "GitHub unreachable: the panel says when GitHub was last reached, and editing, committing, and building continue"` |
 
 ## Where the work stands
 

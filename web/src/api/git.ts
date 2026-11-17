@@ -4,6 +4,15 @@ import { type AuthProblem, json, type RepoId } from "./client";
 
 const R = (id: RepoId) => `/api/repos/${id}`;
 
+let running = 0;
+/** True while this page waits on a Git operation, a fetch included. */
+export const gitRunning = () => running > 0;
+
+function op<T>(method: string, path: string, body?: unknown): Promise<T> {
+	running++;
+	return json<T>(method, path, body).finally(() => running--);
+}
+
 export interface FileStatus {
 	path: string;
 	status:
@@ -100,33 +109,33 @@ export function gitCommitDetail(
 
 /** Errors: 409 `detached`, `conflicts` with `files`, `nothing_to_commit`. */
 export function gitCommit(id: RepoId, message: string): Promise<GitStatus> {
-	return json("POST", `${R(id)}/git/commit`, { message });
+	return op("POST", `${R(id)}/git/commit`, { message });
 }
 
 export function gitFetch(id: RepoId): Promise<GitStatus> {
-	return json("POST", `${R(id)}/git/fetch`);
+	return op("POST", `${R(id)}/git/fetch`);
 }
 
 /** Errors: 409 `detached`, `no_upstream`, `upstream_gone`, `dirty` with `files`. */
 export function gitPull(id: RepoId): Promise<GitStatus> {
-	return json("POST", `${R(id)}/git/pull`);
+	return op("POST", `${R(id)}/git/pull`);
 }
 
 /** Error: 409 `not_merging`. */
 export function gitMergeAbort(id: RepoId): Promise<GitStatus> {
-	return json("POST", `${R(id)}/git/merge/abort`);
+	return op("POST", `${R(id)}/git/merge/abort`);
 }
 
 /** Errors: 403 `no_push_permission`, 409 `detached`, `rejected`. */
 export function gitPush(id: RepoId): Promise<GitStatus> {
-	return json("POST", `${R(id)}/git/push`);
+	return op("POST", `${R(id)}/git/push`);
 }
 
 /** The remote commits a force-push would erase. Error: 409 `detached`. */
 export function gitForcePushPreview(
 	id: RepoId,
 ): Promise<{ remoteSha: string; commits: Commit[] }> {
-	return json("GET", `${R(id)}/git/force-push/preview`);
+	return op("GET", `${R(id)}/git/force-push/preview`);
 }
 
 /** Errors: 403 `no_push_permission`, 409 `detached`, `rejected`. */
@@ -134,23 +143,23 @@ export function gitForcePush(
 	id: RepoId,
 	expectedRemoteSha: string,
 ): Promise<GitStatus> {
-	return json("POST", `${R(id)}/git/force-push`, { expectedRemoteSha });
+	return op("POST", `${R(id)}/git/force-push`, { expectedRemoteSha });
 }
 
 /** Errors: 400 `bad_branch`, 409 `branch_exists`. */
 export function gitCreateBranch(id: RepoId, name: string): Promise<GitStatus> {
-	return json("POST", `${R(id)}/git/branches`, { name });
+	return op("POST", `${R(id)}/git/branches`, { name });
 }
 
 /** Errors: 404 `not_found`, 409 `dirty` with `files`. */
 export function gitCheckout(id: RepoId, branch: string): Promise<GitStatus> {
-	return json("POST", `${R(id)}/git/checkout`, { branch });
+	return op("POST", `${R(id)}/git/checkout`, { branch });
 }
 
 /** Checks out a commit as a read-only snapshot (detached HEAD). Errors as
  * for {@link gitCheckout}. */
 export function gitViewVersion(id: RepoId, commit: string): Promise<GitStatus> {
-	return json("POST", `${R(id)}/git/checkout`, { commit });
+	return op("POST", `${R(id)}/git/checkout`, { commit });
 }
 
 export interface DiscardPreview {
@@ -169,7 +178,7 @@ export function gitDiscard(
 	id: RepoId,
 	fingerprint: string,
 ): Promise<GitStatus> {
-	return json("POST", `${R(id)}/git/discard`, { fingerprint });
+	return op("POST", `${R(id)}/git/discard`, { fingerprint });
 }
 
 /**
@@ -183,5 +192,5 @@ export function createPull(
 	body: string,
 	base = "",
 ): Promise<PullRequest> {
-	return json("POST", `${R(id)}/pulls`, { title, body, base });
+	return op("POST", `${R(id)}/pulls`, { title, body, base });
 }

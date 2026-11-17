@@ -227,6 +227,7 @@ export function App() {
 					key={route.id}
 					id={route.id}
 					env={env}
+					signedIn={auth.signedIn}
 					settings={settings}
 					updateNotice={notice}
 					saveBeforeQuit={saveBeforeQuit}

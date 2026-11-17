@@ -24,6 +24,8 @@ import {
 import {
 	gitCheckout,
 	gitCreateBranch,
+	gitFetch,
+	gitRunning,
 	gitStatus,
 	type Snapshot,
 } from "../api/git";
@@ -61,6 +63,7 @@ import { FileTree } from "./FileTree";
 import { figureUrl } from "./figures";
 import { loadFile, openFileSync } from "./files";
 import {
+	type GitHubCheck,
 	GitPanel,
 	longDate,
 	Modal,
@@ -96,6 +99,9 @@ interface Jump {
 
 const mod = (platform: Platform) => (platform === "darwin" ? "⌘" : "Ctrl+");
 
+/** How often an open project checks GitHub for changes. */
+const CHECK_EVERY = 5 * 60_000;
+
 const LOCKED =
 	"This is an earlier version, so it cannot be changed. Go back to your branch, or start a branch from this version, to edit.";
 
@@ -103,6 +109,7 @@ const LOCKED =
 export function ProjectView({
 	id,
 	env,
+	signedIn,
 	settings,
 	updateNotice,
 	saveBeforeQuit,
@@ -111,6 +118,8 @@ export function ProjectView({
 }: {
 	id: RepoId;
 	env: Env;
+	/** Checks for changes on GitHub run only while signed in. */
+	signedIn: boolean;
 	/** The Settings button, which the app owns. */
 	settings: ReactNode;
 	/** The update notice, when a newer version is available. */
@@ -725,6 +734,31 @@ export function ProjectView({
 		return () => window.removeEventListener("keydown", onKey);
 	}, [gitOpen]);
 
+	// The check for changes on GitHub: a fetch, never a change to the copy.
+	// Auth loss reaches the connection notice through the API client.
+	const [github, setGithub] = useState<GitHubCheck>({
+		reached: null,
+		unreachable: false,
+	});
+	const checkGitHub = useCallback(async () => {
+		if (!signedIn || gitRunning()) return;
+		try {
+			await gitFetch(id);
+			setGithub({ reached: new Date().toISOString(), unreachable: false });
+		} catch (error) {
+			if (isCode(error, "host_unreachable"))
+				setGithub((g) => ({ ...g, unreachable: true }));
+		}
+	}, [id, signedIn]);
+	useEffect(() => {
+		checkGitHub();
+		const timer = setInterval(checkGitHub, CHECK_EVERY);
+		return () => clearInterval(timer);
+	}, [checkGitHub]);
+	useEffect(() => {
+		if (gitOpen) checkGitHub();
+	}, [gitOpen, checkGitHub]);
+
 	const checkTex = async () => {
 		const next = await getEnv();
 		onEnvChange(next);
@@ -1079,6 +1113,7 @@ export function ProjectView({
 								<GitPanel
 									id={id}
 									state={repoState}
+									github={github}
 									flush={flushOpen}
 									onChanged={afterGit}
 									onOpenSource={openSource}

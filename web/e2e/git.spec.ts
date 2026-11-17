@@ -480,6 +480,99 @@ test("Branch removed on GitHub: Get latest explains it and Send puts it back", a
 	await expect(p.getByText(/fix-title · in sync with GitHub/)).toBeVisible();
 });
 
+/** Counts the page's fetches from GitHub as they are sent. */
+function countFetches(page: Page) {
+	const fetches = { sent: 0 };
+	page.on("request", (r) => {
+		if (r.method() === "POST" && r.url().endsWith("/git/fetch")) fetches.sent++;
+	});
+	return fetches;
+}
+
+test("Check on opening: commits pushed while the project was closed show as waiting, without pressing anything", async ({
+	page,
+	github,
+	server,
+}) => {
+	await open(page);
+	await page.goto("/");
+	await expect(page.getByLabel("GitHub link")).toBeVisible();
+	const other = coauthor(github);
+	const theirs = other.push("Retitle", TITLE, "\\title{Their New Title}");
+	other.remove();
+	expect(git(server.paper, "rev-parse", "origin/main")).not.toBe(theirs);
+
+	const fetches = countFetches(page);
+	await page.goto(`/#/r/${PAPER.id}`);
+	await expect(editor(page)).toBeVisible({ timeout: 15_000 });
+	// Opening the project fetched, before Changes & history was opened.
+	await expect
+		.poll(() => git(server.paper, "rev-parse", "origin/main"))
+		.toBe(theirs);
+	expect(fetches.sent).toBe(1);
+
+	const p = await openPanel(page);
+	await expect(p.getByText("1 commit waiting on GitHub")).toBeVisible();
+	expect(git(server.paper, "rev-parse", "HEAD")).not.toBe(theirs);
+});
+
+test("Periodic check: a commit pushed while the project is open shows as waiting within 5 minutes", async ({
+	page,
+	github,
+}) => {
+	const fetches = countFetches(page);
+	await page.clock.install();
+	await open(page);
+	const p = await openPanel(page);
+	// The checks on opening the project and the panel finish.
+	await page.waitForTimeout(1000);
+	const before = fetches.sent;
+	const other = coauthor(github);
+	other.push("Retitle", TITLE, "\\title{Their New Title}");
+	other.remove();
+
+	await page.clock.fastForward("04:00");
+	await page.waitForTimeout(1000);
+	expect(fetches.sent).toBe(before);
+	await expect(p.getByText(/waiting on GitHub/)).toHaveCount(0);
+
+	await page.clock.fastForward("01:30");
+	await expect(p.getByText("1 commit waiting on GitHub")).toBeVisible();
+	expect(fetches.sent).toBe(before + 1);
+});
+
+test("GitHub unreachable: the panel says when GitHub was last reached, and editing, committing, and building continue", async ({
+	page,
+	github,
+	server,
+}) => {
+	test.setTimeout(120_000);
+	await page.clock.install();
+	await open(page);
+	const p = await openPanel(page);
+	await expect(p.getByText("Checked GitHub just now")).toBeVisible();
+
+	renameSync(bare(github), `${bare(github)}.away`);
+	await page.clock.fastForward("05:00");
+	await expect(
+		p.getByText(
+			"GitHub could not be reached. It was last reached 5 minutes ago, so your copy may be out of date.",
+		),
+	).toBeVisible();
+	await expect(page.locator("dialog[open]")).toHaveCount(0);
+
+	await typeAtStart(page, "% written offline\n");
+	expect(onDisk(server)).toContain("% written offline");
+	await commit(page, "Offline note");
+	expect(git(server.paper, "log", "-1", "--format=%s")).toBe("Offline note");
+	await expect(p.getByText(/GitHub could not be reached/)).toBeVisible();
+
+	await page.getByRole("button", { name: "Build PDF" }).click();
+	await expect(page.locator('[data-page="1"] canvas')).toHaveCount(1, {
+		timeout: 60_000,
+	});
+});
+
 test("Branch: create a branch and switch to it", async ({ page, server }) => {
 	await open(page);
 	const p = await openPanel(page);

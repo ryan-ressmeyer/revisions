@@ -28,7 +28,6 @@ import {
 	gitDiff,
 	gitDiscard,
 	gitDiscardPreview,
-	gitFetch,
 	gitForcePush,
 	gitForcePushPreview,
 	gitLog,
@@ -87,12 +86,21 @@ interface Log {
 
 type DialogName = "branch" | "pull" | "force" | "discard";
 
+/** The page's last check for changes on GitHub. */
+export interface GitHubCheck {
+	/** When a check last reached GitHub, ISO 8601; null before the first. */
+	reached: string | null;
+	/** The latest check could not reach GitHub. */
+	unreachable: boolean;
+}
+
 /** "" selects the uncommitted changes. */
 type Selection = string;
 
 export function GitPanel({
 	id,
 	state,
+	github,
 	flush,
 	onChanged,
 	onOpenSource,
@@ -102,6 +110,8 @@ export function GitPanel({
 	id: RepoId;
 	/** The 2-second state poll; the panel refreshes when it changes. */
 	state: RepoState | null;
+	/** The page checks GitHub; the panel refreshes after each check that reached it. */
+	github: GitHubCheck;
 	/** Saves the open file. False when that failed. */
 	flush: () => Promise<boolean>;
 	/** Called after anything that may have changed files or the checkout. */
@@ -134,20 +144,18 @@ export function GitPanel({
 		}
 	}, [id]);
 
-	// What this computer knows at once, then what GitHub has.
 	useEffect(() => {
 		heading.current?.focus();
-		gitFetch(id).then(refresh, () => {});
-	}, [id, refresh]);
+	}, []);
 
 	const headKey = state ? `${state.git.head} ${state.git.branch}` : "";
 	const filesKey = state
 		? `${state.git.dirty} ${Object.values(state.hashes).join()}`
 		: "";
-	// biome-ignore lint/correctness/useExhaustiveDependencies: reload when the checkout moves
+	// biome-ignore lint/correctness/useExhaustiveDependencies: reload when the checkout moves or GitHub was checked
 	useEffect(() => {
 		refresh();
-	}, [refresh, headKey]);
+	}, [refresh, headKey, github.reached]);
 	useEffect(() => {
 		if (filesKey) gitStatus(id).then(setStatus, () => {});
 	}, [id, filesKey]);
@@ -293,6 +301,25 @@ export function GitPanel({
 						Changes &amp; history
 					</h2>
 					{status && <p className="git-where muted">{where(status)}</p>}
+					{github.unreachable ? (
+						<p className="git-where">
+							{github.reached ? (
+								<>
+									GitHub could not be reached. It was last reached{" "}
+									<When iso={github.reached} />, so your copy may be out of
+									date.
+								</>
+							) : (
+								"GitHub could not be reached, so your copy may be out of date."
+							)}
+						</p>
+					) : (
+						github.reached && (
+							<p className="git-where muted">
+								Checked GitHub <When iso={github.reached} />
+							</p>
+						)
+					)}
 				</div>
 				<button
 					type="button"
@@ -539,7 +566,10 @@ function where(s: GitStatus): string {
 	const parts = [`On branch ${s.branch}`];
 	if (s.ahead > 0)
 		parts.push(`${s.ahead} commit${s.ahead === 1 ? "" : "s"} to send`);
-	if (s.behind > 0) parts.push(`${s.behind} new on GitHub`);
+	if (s.behind > 0)
+		parts.push(
+			`${s.behind} commit${s.behind === 1 ? "" : "s"} waiting on GitHub`,
+		);
 	if (s.ahead === 0 && s.behind === 0) parts.push("in sync with GitHub");
 	return parts.join(" · ");
 }
