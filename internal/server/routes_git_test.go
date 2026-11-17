@@ -445,6 +445,28 @@ func TestPullMergesAndReportsConflicts(t *testing.T) {
 	wantError(t, h.call(t, "POST", testRepo+"/git/pull", nil), 409, "no_upstream")
 }
 
+// Scenario: Get latest with uncommitted changes. Git would merge here, because
+// the incoming commit touches another file; Revisions refuses all the same.
+func TestPullRefusesAnyUncommittedChange(t *testing.T) {
+	h := newOpened(t)
+	author := h.authorClone(t)
+	authorCommit(t, author, "refs.bib", "% the author's change\n")
+	write(t, h.clone, "main.tex", "the collaborator's uncommitted line\n")
+	before, head := tree(t, h.clone), h.head(t)
+
+	e := errorBody(t, h.call(t, "POST", testRepo+"/git/pull", nil), 409, "dirty")
+	if files, _ := json.Marshal(e["files"]); string(files) != `[{"path":"main.tex","status":"modified"}]` {
+		t.Errorf("dirty files = %s", files)
+	}
+	if !maps.Equal(tree(t, h.clone), before) || h.head(t) != head {
+		t.Fatal("Get latest merged over uncommitted changes")
+	}
+	// It still fetched, so the waiting commit is counted.
+	if st := h.status(t); st.Behind != 1 {
+		t.Fatalf("after the refused pull: %+v", st)
+	}
+}
+
 // Scenario: Branch removed on GitHub.
 func TestBranchRemovedOnGitHub(t *testing.T) {
 	h := newOpened(t)

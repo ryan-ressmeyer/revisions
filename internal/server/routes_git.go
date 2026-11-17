@@ -363,17 +363,16 @@ func (s *Server) gitPull(w http.ResponseWriter, r *http.Request, id workspace.Re
 		case st.Upstream == "":
 			writeError(w, http.StatusConflict, "no_upstream", "This branch is not on GitHub yet, so there is nothing to pull.")
 			return false
-		}
-		if err := gitx.Merge(ctx, dir, "@{upstream}", who); err != nil {
-			if st.Dirty() {
-				// Git refuses to merge over uncommitted changes to the same files.
-				dirty(w, st, "The incoming changes touch files you have changed. Commit or discard your changes, then pull again.")
-			} else {
-				gitFailed(w, err)
-			}
+		case st.Dirty():
+			// Stricter than Git, which merges when the incoming commits touch other files.
+			dirty(w, st, "You have changes that are not committed. Commit or discard them, then get the latest again.")
 			return false
 		}
-		return true
+		err := gitx.Merge(ctx, dir, "@{upstream}", who)
+		if err != nil {
+			gitFailed(w, err)
+		}
+		return err == nil
 	}) {
 		s.writeStatus(w, r, id, dir)
 	}

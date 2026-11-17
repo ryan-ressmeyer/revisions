@@ -41,7 +41,7 @@ test("First open: a pasted link opens the entry file in the editor", async ({
 	await expect(page.getByRole("link", { name: "ada/paper" })).toBeVisible();
 });
 
-test("Dirty clone: refuses to switch, explains why, and offers the copy as it is", async ({
+test("Dirty clone: the move prompt for that clone shows, the copy as it is stays available, and Commit opens the link", async ({
 	page,
 	server,
 	fake,
@@ -65,18 +65,40 @@ test("Dirty clone: refuses to switch, explains why, and offers the copy as it is
 	const sha = git("commit-tree", "main^{tree}", "-p", "main", "-m", "other");
 	git("update-ref", "refs/heads/other", sha);
 
-	await page.goto("/");
-	await page.getByLabel("GitHub link").fill(`${PAPER.url}/tree/other`);
-	await page.getByRole("button", { name: "Open" }).click();
-	const alert = page.getByRole("alert");
-	await expect(alert).toContainText("changes that are not yet saved to Git");
-	await expect(alert).toContainText("commit them or discard them");
-	await expect(alert.getByRole("listitem")).toHaveText(["main.tex (changed)"]);
+	const link = `${PAPER.url}/tree/other`;
+	const clone = (...args: string[]) =>
+		execFileSync("git", ["-C", server.paper, ...args], {
+			encoding: "utf8",
+		}).trim();
+	const head = clone("rev-parse", "HEAD");
+	const openLink = async () => {
+		await page.goto("/");
+		await page.getByLabel("GitHub link").fill(link);
+		await page.getByRole("button", { name: "Open" }).click();
+	};
+	const prompt = page.getByRole("dialog", { name: `Open ${link}` });
 
-	await alert.getByRole("button", { name: "Open this copy as it is" }).click();
+	await openLink();
+	await expect(
+		prompt.getByRole("list", { name: "Changed files" }).getByRole("listitem"),
+	).toHaveText([/main\.tex/]);
+	expect(readFileSync(main, "utf8")).toMatch(/^% local note\n/);
+	expect(clone("rev-parse", "HEAD")).toBe(head);
+	expect(clone("branch", "--show-current")).toBe("main");
+
+	await prompt.getByRole("button", { name: "Open this copy as it is" }).click();
 	await expect(page.getByRole("textbox", { name: "Source" })).toBeVisible();
 	expect(await editorText(page)).toMatch(/^% local note\n/);
 	expect(readFileSync(main, "utf8")).toMatch(/^% local note\n/);
+
+	// Again, and this time commit: the link then opens.
+	await openLink();
+	await prompt.getByLabel("Describe your changes").fill("Local note");
+	await prompt.getByRole("button", { name: "Commit", exact: true }).click();
+	await expect(page.getByRole("textbox", { name: "Source" })).toBeVisible();
+	await expect(page.getByText("on branch other")).toBeVisible();
+	expect(clone("log", "-1", "--format=%s", "main")).toBe("Local note");
+	expect(clone("branch", "--show-current")).toBe("other");
 });
 
 test.describe("without a GitHub client ID", () => {

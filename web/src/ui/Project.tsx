@@ -60,7 +60,7 @@ import { explain, isCode } from "./errors";
 import { FileTree } from "./FileTree";
 import { figureUrl } from "./figures";
 import { loadFile, openFileSync } from "./files";
-import { GitPanel, Modal } from "./Git";
+import { GitPanel, longDate, Modal, MovePrompt, runMove, Unclean } from "./Git";
 import { TexGuidance } from "./Guidance";
 import { type PdfHandle, PdfView } from "./Pdf";
 import {
@@ -883,6 +883,7 @@ export function ProjectView({
 					head={snapshotHead}
 					snapshot={snapshot}
 					onDone={afterGit}
+					onAuthLost={onAuthLost}
 				/>
 			)}
 			<div className="workspace">
@@ -1165,6 +1166,7 @@ function SnapshotBanner({
 	head,
 	snapshot,
 	onDone,
+	onAuthLost,
 }: {
 	id: RepoId;
 	head: string;
@@ -1172,7 +1174,9 @@ function SnapshotBanner({
 	snapshot: Snapshot | null;
 	/** Called after the checkout moved. */
 	onDone: () => void;
+	onAuthLost: () => void;
 }) {
+	const [unclean, setUnclean] = useState<Unclean | null>(null);
 	const [naming, setNaming] = useState(false);
 	const [name, setName] = useState("");
 	const [busy, setBusy] = useState(false);
@@ -1188,7 +1192,8 @@ function SnapshotBanner({
 			await action();
 			onDone();
 		} catch (error) {
-			setProblem(explain(error));
+			if (error instanceof Unclean) setUnclean(error);
+			else setProblem(explain(error));
 		} finally {
 			setBusy(false);
 		}
@@ -1204,13 +1209,7 @@ function SnapshotBanner({
 				{snapshot ? (
 					<>
 						: “{snapshot.subject}”, from{" "}
-						<time dateTime={snapshot.date}>
-							{new Date(snapshot.date).toLocaleString(undefined, {
-								dateStyle: "long",
-								timeStyle: "short",
-							})}
-						</time>
-						.
+						<time dateTime={snapshot.date}>{longDate(snapshot.date)}</time>.
 					</>
 				) : (
 					` (${head.slice(0, 7)}).`
@@ -1251,7 +1250,16 @@ function SnapshotBanner({
 							type="button"
 							className="primary"
 							disabled={busy}
-							onClick={() => run(() => gitCheckout(id, back))}
+							// ponytail: no save first, because the editor is read-only on a
+							// snapshot. The header dialog replacing this banner may need one.
+							onClick={() =>
+								run(() =>
+									runMove(id, {
+										label: `Return to branch ${back}`,
+										run: () => gitCheckout(id, back),
+									}),
+								)
+							}
 						>
 							Back to {back}
 						</button>
@@ -1270,6 +1278,21 @@ function SnapshotBanner({
 				<p role="alert" className="alert">
 					{problem}
 				</p>
+			)}
+			{unclean && (
+				<MovePrompt
+					id={id}
+					unclean={unclean}
+					onAuthLost={onAuthLost}
+					onMoved={() => {
+						setUnclean(null);
+						onDone();
+					}}
+					onClose={() => {
+						setUnclean(null);
+						onDone();
+					}}
+				/>
 			)}
 		</section>
 	);

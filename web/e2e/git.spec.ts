@@ -1,5 +1,11 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+	mkdtempSync,
+	readFileSync,
+	renameSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
@@ -484,33 +490,88 @@ test("Branch: create a branch and switch to it", async ({ page, server }) => {
 	expect(git(server.paper, "branch", "--show-current")).toBe("notes");
 });
 
-test("Branch: switching is refused while there are uncommitted changes", async ({
+/** Pushes a branch "draft" with its own title to GitHub. */
+function pushDraft(github: Fake) {
+	const other = coauthor(github);
+	other.git("switch", "--quiet", "-c", "draft");
+	other.push("Draft title", TITLE, "\\title{Draft Title}");
+	other.remove();
+}
+
+/** Chooses Switch for `name` in the Branches dialog. */
+async function switchTo(page: Page, name: string) {
+	await panel(page).getByRole("button", { name: "Branch…" }).click();
+	await page
+		.getByRole("dialog", { name: "Branches" })
+		.getByRole("button", { name: `Switch to ${name}` })
+		.click();
+}
+
+/** The move prompt, whose title names the destination. */
+const prompt = (page: Page, destination: string | RegExp) =>
+	page.getByRole("dialog", { name: destination });
+
+test("Commit and move: Commit in the prompt commits every change, then switches branch", async ({
 	page,
 	github,
 	server,
 }) => {
 	await open(page);
-	const other = coauthor(github);
-	other.git("switch", "--quiet", "-c", "draft");
-	other.push("Draft title", TITLE, "\\title{Draft Title}");
-	other.remove();
-
+	pushDraft(github);
 	await typeAtStart(page, "% unfinished\n");
-	const p = await openPanel(page);
-	await p.getByRole("button", { name: "Branch…" }).click();
-	const dialog = page.getByRole("dialog", { name: "Branches" });
-	const draft = dialog.getByRole("listitem").filter({ hasText: "draft" });
-	await draft.getByRole("button", { name: "Switch" }).click();
-	await expect(dialog.getByRole("alert")).toContainText(/commit or discard/i);
-	await expect(dialog.getByRole("alert")).toContainText("main.tex");
-	expect(git(server.paper, "branch", "--show-current")).toBe("main");
+	writeFileSync(join(server.paper, "notes.tex"), "% my notes\n");
+	await openPanel(page);
+	await switchTo(page, "draft");
 
-	git(server.paper, "checkout", "--", "main.tex");
-	await expect(editor(page)).not.toContainText("% unfinished");
-	await draft.getByRole("button", { name: "Switch" }).click();
+	const dialog = prompt(page, "Switch to branch draft");
+	await expect(
+		dialog.getByRole("list", { name: "Changed files" }),
+	).toContainText("main.tex");
+	await expect(
+		dialog.getByRole("list", { name: "Changed files" }),
+	).toContainText("notes.tex");
+	const description = dialog.getByLabel("Describe your changes");
+	await expect(description).toHaveValue("");
+	await description.fill("Keep my notes");
+	await dialog.getByRole("button", { name: "Commit", exact: true }).click();
+
 	await expect(dialog).toBeHidden();
 	await expect(topbar(page).getByText("on branch draft")).toBeVisible();
 	expect(await editorText(page)).toContain("\\title{Draft Title}");
+	expect(git(server.paper, "log", "-1", "--format=%s", "main")).toBe(
+		"Keep my notes",
+	);
+	expect(
+		git(server.paper, "show", "--name-only", "--format=", "main").split("\n"),
+	).toEqual(["main.tex", "notes.tex"]);
+	expect(git(server.paper, "status", "--porcelain")).toBe("");
+});
+
+test("Discard and move: Discard in the prompt shows the diff, discards after the confirm, then switches branch", async ({
+	page,
+	github,
+	server,
+}) => {
+	await open(page);
+	pushDraft(github);
+	const main = git(server.paper, "rev-parse", "main");
+	await typeAtStart(page, "% unfinished\n");
+	await openPanel(page);
+	await switchTo(page, "draft");
+
+	const dialog = prompt(page, "Switch to branch draft");
+	await dialog.getByRole("button", { name: "Discard…" }).click();
+	const discard = page.getByRole("dialog", { name: /Discard/ });
+	await expect(discard.locator(".diff-add")).toContainText("% unfinished");
+	expect(git(server.paper, "branch", "--show-current")).toBe("main");
+	await discard.getByRole("button", { name: "Discard these changes" }).click();
+
+	await expect(dialog).toBeHidden();
+	await expect(topbar(page).getByText("on branch draft")).toBeVisible();
+	expect(await editorText(page)).toContain("\\title{Draft Title}");
+	expect(git(server.paper, "rev-parse", "main")).toBe(main);
+	expect(git(server.paper, "status", "--porcelain")).toBe("");
+	expect(await editorText(page)).not.toContain("% unfinished");
 });
 
 const banner = (page: Page) =>
@@ -569,10 +630,9 @@ test("View this version: an earlier version is read-only, builds, and the banner
 	expect(onDisk(server)).toContain("% editable again");
 });
 
-test("View this version: refused while there are uncommitted changes", async ({
-	page,
-	server,
-}) => {
+/** Commits a later title, leaves an uncommitted edit, and chooses View
+ * this version on the first commit. */
+async function viewWithChanges(page: Page) {
 	await open(page);
 	const p = await openPanel(page);
 	await retitle(page, "A Later Title");
@@ -582,10 +642,151 @@ test("View this version: refused while there are uncommitted changes", async ({
 		.getByRole("button", { name: /Initial manuscript/ })
 		.click();
 	await p.getByRole("button", { name: "View this version" }).click();
-	await expect(p.getByRole("alert")).toContainText(/commit or discard/i);
-	await expect(p.getByRole("alert")).toContainText("main.tex");
+}
+
+test("View with uncommitted changes: the prompt lists them, and the checkout stays until Commit succeeds", async ({
+	page,
+	server,
+}) => {
+	await viewWithChanges(page);
+	const head = git(server.paper, "rev-parse", "HEAD");
+	const dialog = prompt(page, /View the version/);
+	await expect(dialog).toContainText("Initial manuscript");
+	await expect(
+		dialog.getByRole("list", { name: "Changed files" }).getByRole("listitem"),
+	).toHaveText([/main\.tex/]);
+	for (const name of ["Commit", "Discard…", "Cancel"])
+		await expect(
+			dialog.getByRole("button", { name, exact: true }),
+		).toBeVisible();
+
+	// A description is required; without one nothing happens.
+	await dialog.getByRole("button", { name: "Commit", exact: true }).click();
+	await expect(dialog).toBeVisible();
 	expect(git(server.paper, "branch", "--show-current")).toBe("main");
+	expect(git(server.paper, "rev-parse", "HEAD")).toBe(head);
 	await expect(banner(page)).toHaveCount(0);
+
+	await dialog.getByLabel("Describe your changes").fill("Unfinished note");
+	await dialog.getByRole("button", { name: "Commit", exact: true }).click();
+	await expect(dialog).toBeHidden();
+	await expect(banner(page)).toContainText("Initial manuscript");
+	expect(git(server.paper, "branch", "--show-current")).toBe("");
+	expect(git(server.paper, "log", "-1", "--format=%s", "main")).toBe(
+		"Unfinished note",
+	);
+});
+
+test("Cancel: nothing is committed, discarded, or moved", async ({
+	page,
+	server,
+}) => {
+	await viewWithChanges(page);
+	const head = git(server.paper, "rev-parse", "HEAD");
+	const dialog = prompt(page, /View the version/);
+	await dialog.getByRole("button", { name: "Cancel" }).click();
+	await expect(dialog).toBeHidden();
+	expect(git(server.paper, "branch", "--show-current")).toBe("main");
+	expect(git(server.paper, "rev-parse", "HEAD")).toBe(head);
+	expect(git(server.paper, "status", "--porcelain")).toBe("M main.tex");
+	expect(onDisk(server)).toMatch(/^% unfinished\n/);
+	await expect(banner(page)).toHaveCount(0);
+});
+
+test("Get latest with uncommitted changes: the prompt shows, and the merge waits for the confirmed discard", async ({
+	page,
+	github,
+	server,
+}) => {
+	await open(page);
+	const other = coauthor(github);
+	const theirs = other.push(
+		"Their reference",
+		"Small steps",
+		"Smaller steps",
+		"refs.bib",
+	);
+	other.remove();
+	const head = git(server.paper, "rev-parse", "HEAD");
+	await typeAtStart(page, "% unfinished\n");
+	const p = await openPanel(page);
+	await p.getByRole("button", { name: "Get latest" }).click();
+
+	const dialog = prompt(page, "Get latest for branch main");
+	await expect(
+		dialog.getByRole("list", { name: "Changed files" }),
+	).toContainText("main.tex");
+	expect(git(server.paper, "rev-parse", "HEAD")).toBe(head);
+	expect(onDisk(server, "refs.bib")).toContain("Small steps");
+
+	await dialog.getByRole("button", { name: "Discard…" }).click();
+	await page
+		.getByRole("dialog", { name: /Discard/ })
+		.getByRole("button", { name: "Discard these changes" })
+		.click();
+	await expect(dialog).toBeHidden();
+	await expect(p.getByRole("status")).toContainText("up to date");
+	expect(git(server.paper, "rev-parse", "HEAD")).toBe(theirs);
+	expect(onDisk(server, "refs.bib")).toContain("Smaller steps");
+	expect(onDisk(server)).not.toContain("% unfinished");
+});
+
+test("Move fails after a commit: the prompt says the work was committed and Get latest did not happen, and does not retry", async ({
+	page,
+	github,
+	server,
+}) => {
+	await open(page);
+	await typeAtStart(page, "% unfinished\n");
+	const p = await openPanel(page);
+	let pulls = 0;
+	page.on("request", (r) => {
+		if (r.method() === "POST" && r.url().endsWith("/git/pull")) pulls++;
+	});
+	await p.getByRole("button", { name: "Get latest" }).click();
+	const dialog = prompt(page, "Get latest for branch main");
+	await expect(dialog).toBeVisible();
+
+	// GitHub goes away between the prompt and the commit.
+	renameSync(bare(github), `${bare(github)}.away`);
+	await dialog.getByLabel("Describe your changes").fill("Unfinished note");
+	await dialog.getByRole("button", { name: "Commit", exact: true }).click();
+	await expect(dialog.getByRole("alert")).toContainText("committed");
+	await expect(dialog.getByRole("alert")).toContainText("did not happen");
+	await expect(dialog.getByRole("alert")).toContainText(
+		"Could not reach GitHub",
+	);
+	expect(git(server.paper, "branch", "--show-current")).toBe("main");
+	expect(git(server.paper, "log", "-1", "--format=%s")).toBe("Unfinished note");
+	expect(git(server.paper, "status", "--porcelain")).toBe("");
+	await page.waitForTimeout(500);
+	expect(pulls).toBe(2);
+
+	await dialog.getByRole("button", { name: "Close" }).click();
+	await expect(dialog).toBeHidden();
+	expect(pulls).toBe(2);
+});
+
+test("Unfinished merge: a move is refused without a prompt until the merge is finished or undone", async ({
+	page,
+	github,
+	server,
+}) => {
+	await conflict(page, github);
+	const head = git(server.paper, "rev-parse", "HEAD");
+	const p = panel(page);
+	await history(page)
+		.getByRole("button", { name: /Initial manuscript/ })
+		.click();
+	await p.getByRole("button", { name: "View this version" }).click();
+	await expect(
+		p.getByRole("alert").filter({ hasText: "Finish or undo the merge first" }),
+	).toBeVisible();
+	await expect(page.getByRole("dialog")).toHaveCount(0);
+	expect(git(server.paper, "branch", "--show-current")).toBe("main");
+	expect(git(server.paper, "rev-parse", "HEAD")).toBe(head);
+	git(server.paper, "rev-parse", "MERGE_HEAD");
+	expect(onDisk(server)).toContain("<<<<<<<");
 });
 
 test("Snapshot: a commit link opens a read-only snapshot, and a branch from it can be edited and committed", async ({

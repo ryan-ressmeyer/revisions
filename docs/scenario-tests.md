@@ -207,13 +207,13 @@ Requirements from here on are in `specs/git-workflow.md`.
 
 | Scenario | Test |
 |---|---|
-| Dirty clone | `pending` |
-| View with uncommitted changes | `pending` |
-| Commit and move | `pending` |
-| Discard and move | `pending` |
-| Cancel | `pending` |
-| Move fails after a commit | `pending` |
-| Unfinished merge | `pending` |
+| Dirty clone | `web/e2e/start.spec.ts: "Dirty clone: the move prompt for that clone shows, the copy as it is stays available, and Commit opens the link"` |
+| View with uncommitted changes | `web/e2e/git.spec.ts: "View with uncommitted changes: the prompt lists them, and the checkout stays until Commit succeeds"` |
+| Commit and move | `web/e2e/git.spec.ts: "Commit and move: Commit in the prompt commits every change, then switches branch"` |
+| Discard and move | `web/e2e/git.spec.ts: "Discard and move: Discard in the prompt shows the diff, discards after the confirm, then switches branch"` |
+| Cancel | `web/e2e/git.spec.ts: "Cancel: nothing is committed, discarded, or moved"` |
+| Move fails after a commit | `web/e2e/git.spec.ts: "Move fails after a commit: the prompt says the work was committed and Get latest did not happen, and does not retry"` |
+| Unfinished merge | `web/e2e/git.spec.ts: "Unfinished merge: a move is refused without a prompt until the merge is finished or undone"` |
 
 ## View an earlier version
 
@@ -231,8 +231,8 @@ Requirements from here on are in `specs/git-workflow.md`.
 
 | Scenario | Test |
 |---|---|
-| Get latest with uncommitted changes | `pending` |
-| Conflict | `pending` |
+| Get latest with uncommitted changes | `internal/server/routes_git_test.go: TestPullRefusesAnyUncommittedChange`; `web/e2e/git.spec.ts: "Get latest with uncommitted changes: the prompt shows, and the merge waits for the confirmed discard"` |
+| Conflict | `internal/server/routes_git_test.go: TestPullMergesAndReportsConflicts`; `web/e2e/git.spec.ts: "Get latest: a conflict is resolved in the editor and the commit finishes the merge"`, `"Get latest: Undo this merge puts the copy back as it was"` |
 | Branch removed on GitHub | `internal/server/routes_git_test.go: TestBranchRemovedOnGitHub`; `web/e2e/git.spec.ts: "Branch removed on GitHub: Get latest explains it and Send puts it back"` |
 
 ## Check GitHub for changes

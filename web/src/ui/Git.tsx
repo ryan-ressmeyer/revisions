@@ -120,6 +120,7 @@ export function GitPanel({
 	const [offer, setOffer] = useState<"get-latest" | "send" | null>(null);
 	const [done, setDone] = useState("");
 	const [dialog, setDialog] = useState<DialogName | null>(null);
+	const [unclean, setUnclean] = useState<Unclean | null>(null);
 	const heading = useRef<HTMLHeadingElement>(null);
 
 	const refresh = useCallback(async () => {
@@ -198,20 +199,28 @@ export function GitPanel({
 			setDone(success(s));
 			return true;
 		} catch (error) {
-			report(error);
+			if (error instanceof Unclean) setUnclean(error);
+			else report(error);
 			return false;
 		} finally {
 			setBusy("");
 			after();
 		}
 	};
+	/** act for a move: uncommitted changes bring up the move prompt. */
+	const go = (name: string, move: Move<GitStatus>) =>
+		act(
+			name,
+			() => runMove(id, move),
+			(s) => move.done?.(s) ?? "",
+		);
 
 	const getLatest = () =>
-		act(
-			"pull",
-			() => gitPull(id),
-			(s) => (s.merging ? "" : "Your copy is up to date with GitHub."),
-		);
+		go("pull", {
+			label: `Get latest for branch ${status?.branch}`,
+			run: () => gitPull(id),
+			done: (s) => (s.merging ? "" : "Your copy is up to date with GitHub."),
+		});
 	const send = () =>
 		act(
 			"push",
@@ -236,13 +245,17 @@ export function GitPanel({
 			() => gitCreateBranch(id, name),
 			(s) => `You are now on the new branch ${s.branch}.`,
 		);
-	const viewVersion = (sha: string) =>
-		act(
-			"view",
-			() => gitViewVersion(id, sha),
-			() =>
+	const viewVersion = (sha: string) => {
+		const c = log?.commits.find((c) => c.sha === sha);
+		return go("view", {
+			label: c
+				? `View the version of ${longDate(c.date)}: ${c.subject}`
+				: `View version ${sha.slice(0, 7)}`,
+			run: () => gitViewVersion(id, sha),
+			done: () =>
 				"The editor now shows this version, read-only. The banner above the editor leads back.",
-		);
+		});
+	};
 	const abortMerge = () =>
 		act(
 			"abort",
@@ -453,7 +466,26 @@ export function GitPanel({
 						setStatus(s);
 						closeDialog(`You are now on branch ${s.branch}.`);
 					}}
+					onUnclean={(u) => {
+						setDialog(null);
+						setUnclean(u);
+					}}
 					onClose={() => closeDialog()}
+				/>
+			)}
+			{unclean && (
+				<MovePrompt
+					id={id}
+					unclean={unclean}
+					onAuthLost={onAuthLost}
+					onMoved={(message) => {
+						setUnclean(null);
+						closeDialog(message);
+					}}
+					onClose={() => {
+						setUnclean(null);
+						after();
+					}}
 				/>
 			)}
 			{dialog === "pull" && status && (
@@ -511,6 +543,13 @@ function where(s: GitStatus): string {
 	if (s.ahead === 0 && s.behind === 0) parts.push("in sync with GitHub");
 	return parts.join(" · ");
 }
+
+/** A date and time, for people. */
+export const longDate = (iso: string) =>
+	new Date(iso).toLocaleString(undefined, {
+		dateStyle: "long",
+		timeStyle: "short",
+	});
 
 const Spinner = () => <span className="spinner" aria-hidden="true" />;
 
@@ -1093,6 +1132,7 @@ function BranchDialog({
 	flush,
 	onAuthLost,
 	onDone,
+	onUnclean,
 	onClose,
 }: {
 	id: RepoId;
@@ -1101,6 +1141,8 @@ function BranchDialog({
 	flush: () => Promise<boolean>;
 	onAuthLost: () => void;
 	onDone: (status: GitStatus) => void;
+	/** A switch met uncommitted changes: the panel shows the move prompt. */
+	onUnclean: (unclean: Unclean) => void;
 	onClose: () => void;
 }) {
 	const [name, setName] = useState("");
@@ -1118,7 +1160,8 @@ function BranchDialog({
 		try {
 			onDone(await action());
 		} catch (error) {
-			if (isCode(error, "auth_required")) onAuthLost();
+			if (error instanceof Unclean) onUnclean(error);
+			else if (isCode(error, "auth_required")) onAuthLost();
 			else setProblem(problemOf(error));
 			setBusy(false);
 		}
@@ -1181,7 +1224,15 @@ function BranchDialog({
 							<button
 								type="button"
 								disabled={busy}
-								onClick={() => run(() => gitCheckout(id, b.name))}
+								onClick={() =>
+									run(() =>
+										runMove(id, {
+											label: `Switch to branch ${b.name}`,
+											run: () => gitCheckout(id, b.name),
+											done: (s) => `You are now on branch ${s.branch}.`,
+										}),
+									)
+								}
 								aria-label={`Switch to ${b.name}`}
 							>
 								Switch
@@ -1575,5 +1626,199 @@ function DiscardDialog({
 				</>
 			)}
 		</Modal>
+	);
+}
+
+const MERGING =
+	"This copy is in the middle of a merge. Finish or undo the merge first: commit to finish it, or choose Undo this merge in Changes & history.";
+
+/** A move: anything that changes which version the working copy holds. */
+export interface Move<T = unknown> {
+	/** The destination in plain words; the move prompt's title. */
+	label: string;
+	run(): Promise<T>;
+	/** What to say once the move is done. */
+	done?(result: T): string;
+}
+
+/** Thrown by {@link runMove} when uncommitted changes need the move prompt. */
+export class Unclean extends Error {
+	constructor(
+		readonly move: Move,
+		readonly status: GitStatus,
+	) {
+		super(move.label);
+	}
+}
+
+/**
+ * Runs `move` on clone `id`. The server decides whether the copy is clean:
+ * its 409 `dirty` throws {@link Unclean} for the move prompt, or, during an
+ * unfinished merge, the refusal (code `merging`). Save pending text first.
+ */
+export async function runMove<T>(id: RepoId, move: Move<T>): Promise<T> {
+	try {
+		return await move.run();
+	} catch (error) {
+		if (!isCode(error, "dirty")) throw error;
+		const status = await gitStatus(id);
+		if (status.merging) throw new ApiError(409, "merging", MERGING, {});
+		throw new Unclean(move, status);
+	}
+}
+
+/**
+ * The move prompt: lists the uncommitted changes that block a move and
+ * offers Commit (not on a snapshot), Discard, and Cancel. After a commit or
+ * a confirmed discard it makes the move once; if that fails it says what
+ * was kept or thrown away and why the move did not happen. `children` adds
+ * buttons beside Cancel.
+ */
+export function MovePrompt({
+	id,
+	unclean,
+	onMoved,
+	onClose,
+	onAuthLost,
+	children,
+}: {
+	id: RepoId;
+	unclean: Unclean;
+	/** The move is done; `message` says what happened. */
+	onMoved: (message: string) => void;
+	/** Cancel, or Close after a failure. */
+	onClose: () => void;
+	onAuthLost: () => void;
+	children?: ReactNode;
+}) {
+	const { move, status } = unclean;
+	const [message, setMessage] = useState("");
+	const [busy, setBusy] = useState(false);
+	const [problem, setProblem] = useState<Problem | null>(null);
+	const [failed, setFailed] = useState<Problem | null>(null);
+	const [discarding, setDiscarding] = useState(false);
+	const messageId = useId();
+
+	/** After a commit or discard (`kept`): the move, once. */
+	const finish = async (kept: string) => {
+		setBusy(true);
+		try {
+			const result = await move.run();
+			onMoved(`${kept} ${move.done?.(result) ?? ""}`.trim());
+		} catch (error) {
+			if (isCode(error, "auth_required")) onAuthLost();
+			const why = problemOf(error);
+			setFailed({
+				...why,
+				text: `${kept} “${move.label}” did not happen. ${why.text}`,
+			});
+		} finally {
+			setBusy(false);
+		}
+	};
+	const commit = async (event: FormEvent) => {
+		event.preventDefault();
+		setProblem(null);
+		setBusy(true);
+		try {
+			await gitCommit(id, message);
+		} catch (error) {
+			if (isCode(error, "auth_required")) onAuthLost();
+			setProblem(problemOf(error));
+			setBusy(false);
+			return;
+		}
+		await finish(
+			`Your changes were committed on this computer as “${message.trim()}”.`,
+		);
+	};
+
+	return (
+		<>
+			<Modal title={move.label} wide busy={busy} onClose={onClose}>
+				{failed ? (
+					<>
+						<ProblemBox problem={failed} />
+						<div className="row end">
+							<button type="button" className="primary" onClick={onClose}>
+								Close
+							</button>
+						</div>
+					</>
+				) : (
+					<>
+						<p>
+							Your copy has changes that are not committed. Commit them to keep
+							them, or discard them; Revisions then continues.
+						</p>
+						<ul className="file-list" aria-label="Changed files">
+							{status.files.map((f) => (
+								<li key={f.path}>
+									<span className="file-path">{f.path}</span>
+									<span className={`file-status ${f.status}`}>
+										{statusWords[f.status]}
+									</span>
+								</li>
+							))}
+						</ul>
+						{status.branch === null ? (
+							<p className="help">
+								This copy is a snapshot of an earlier version, so these changes
+								cannot be committed. Discard them, or cancel and start a branch
+								to keep them.
+							</p>
+						) : (
+							<form className="commit-form" onSubmit={commit}>
+								<label htmlFor={messageId}>Describe your changes</label>
+								<textarea
+									id={messageId}
+									rows={2}
+									required
+									value={message}
+									onChange={(e) => setMessage(e.target.value)}
+									placeholder="For example: Tighten the abstract"
+								/>
+								<p className="help">
+									Commit records every change on branch {status.branch}, then
+									Revisions continues.
+								</p>
+								<div className="row">
+									<button type="submit" className="primary" disabled={busy}>
+										{busy && <Spinner />}Commit
+									</button>
+								</div>
+							</form>
+						)}
+						{problem && <ProblemBox problem={problem} />}
+						<div className="row end dialog-foot">
+							{children}
+							<button
+								type="button"
+								className="quiet danger"
+								onClick={() => setDiscarding(true)}
+								disabled={busy}
+							>
+								Discard…
+							</button>
+							<button type="button" onClick={onClose} disabled={busy}>
+								Cancel
+							</button>
+						</div>
+					</>
+				)}
+			</Modal>
+			{discarding && (
+				<DiscardDialog
+					id={id}
+					merging={false}
+					onAuthLost={onAuthLost}
+					onDiscarded={() => {
+						setDiscarding(false);
+						finish("Your changes were discarded.");
+					}}
+					onClose={() => setDiscarding(false)}
+				/>
+			)}
+		</>
 	);
 }

@@ -1,18 +1,16 @@
 import { type FormEvent, useEffect, useState } from "react";
 import {
-	ApiError,
 	listRepos,
 	openUrl,
 	type RepoId,
 	type RepoSummary,
 } from "../api/client";
-import type { FileStatus } from "../api/git";
 import { explain, isCode } from "./errors";
-import { statusWords } from "./Git";
+import { type Move, MovePrompt, runMove, Unclean } from "./Git";
 import { repoHref } from "./route";
 
 // ponytail: the UI reads owner and name from the link itself to offer the
-// existing copy after a `dirty` refusal. Ask the server to put `repo` in the
+// existing copy's move prompt after a `dirty` refusal. Ask the server to put `repo` in the
 // error if hosts other than GitHub arrive.
 function repoOfUrl(url: string): RepoId | null {
 	const match = /github\.com\/([\w.-]+)\/([\w.-]+?)(?:\.git)?(?:[/?#]|$)/.exec(
@@ -21,9 +19,8 @@ function repoOfUrl(url: string): RepoId | null {
 	return match ? `github.com/${match[1]}/${match[2]}` : null;
 }
 
-type Failure =
-	| { kind: "dirty"; files: FileStatus[]; repo: RepoId | null }
-	| { kind: "message"; message: string };
+/** A failed Open; `repo` is the existing copy to offer as it is. */
+type Failure = { message: string; repo: RepoId | null };
 
 export function Home({
 	onGitMissing,
@@ -36,6 +33,10 @@ export function Home({
 	const [opening, setOpening] = useState(false);
 	const [failure, setFailure] = useState<Failure | null>(null);
 	const [repos, setRepos] = useState<RepoSummary[] | null>(null);
+	const [prompt, setPrompt] = useState<{
+		repo: RepoId;
+		unclean: Unclean;
+	} | null>(null);
 
 	useEffect(() => {
 		listRepos().then(setRepos, () => setRepos([]));
@@ -45,24 +46,38 @@ export function Home({
 		event.preventDefault();
 		setFailure(null);
 		setOpening(true);
+		const link = url.trim();
+		const repo = repoOfUrl(link);
+		const move: Move = {
+			label: `Open ${link}`,
+			run: async () => {
+				window.location.hash = repoHref((await openUrl(link)).repo);
+			},
+		};
 		try {
-			const opened = await openUrl(url.trim());
-			window.location.hash = repoHref(opened.repo);
+			await (repo ? runMove(repo, move) : move.run());
 		} catch (error) {
 			setOpening(false);
+			if (error instanceof Unclean && repo)
+				return setPrompt({ repo, unclean: error });
 			if (isCode(error, "git_missing")) return onGitMissing();
 			if (isCode(error, "auth_required")) onSignedOut();
-			if (error instanceof ApiError && error.code === "dirty") {
-				setFailure({
-					kind: "dirty",
-					files: (error.extra.files as FileStatus[] | undefined) ?? [],
-					repo: repoOfUrl(url),
-				});
-			} else {
-				setFailure({ kind: "message", message: explain(error) });
-			}
+			setFailure({
+				message: explain(error),
+				repo: isCode(error, "merging") ? repo : null,
+			});
 		}
 	};
+	const openAsItIs = (repo: RepoId) => (
+		<button
+			type="button"
+			onClick={() => {
+				window.location.hash = repoHref(repo);
+			}}
+		>
+			Open this copy as it is
+		</button>
+	);
 
 	return (
 		<main className="home">
@@ -100,38 +115,22 @@ export function Home({
 						</>
 					)}
 				</p>
-				{failure?.kind === "message" && (
+				{failure && (
 					<div role="alert" className="alert">
-						{failure.message}
+						<p>{failure.message}</p>
+						{failure.repo && openAsItIs(failure.repo)}
 					</div>
 				)}
-				{failure?.kind === "dirty" && (
-					<div role="alert" className="alert">
-						<p>
-							The copy of this manuscript on this computer has changes that are
-							not yet saved to Git, so Revisions did not switch it to the link
-							you opened. Nothing was changed. To switch, commit them or discard
-							them first.
-						</p>
-						<p>Files with changes:</p>
-						<ul>
-							{failure.files.map((f) => (
-								<li key={f.path}>
-									{f.path} ({statusWords[f.status]})
-								</li>
-							))}
-						</ul>
-						{failure.repo && (
-							<button
-								type="button"
-								onClick={() => {
-									window.location.hash = repoHref(failure.repo ?? "");
-								}}
-							>
-								Open this copy as it is
-							</button>
-						)}
-					</div>
+				{prompt && (
+					<MovePrompt
+						id={prompt.repo}
+						unclean={prompt.unclean}
+						onAuthLost={onSignedOut}
+						onMoved={() => setPrompt(null)}
+						onClose={() => setPrompt(null)}
+					>
+						{openAsItIs(prompt.repo)}
+					</MovePrompt>
 				)}
 			</section>
 
