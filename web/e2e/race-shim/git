@@ -1,0 +1,18 @@
+#!/bin/bash
+# Widening shim: sleeps 0.5-2 s before the Git subcommands that move the
+# checkout or rewrite files, then runs the real git. Server process only.
+skip=0
+for a in "$@"; do
+  if [ $skip = 1 ]; then skip=0; continue; fi
+  case "$a" in
+    -C|-c) skip=1;;
+    switch|merge|reset|restore|checkout|fetch)
+      s=$(awk -v r=$RANDOM 'BEGIN{printf "%.2f", 0.5+1.5*r/32767}')
+      echo "$(date +%s.%3N) pid=$$ sub=$a sleep=$s" >> "${RACE_SHIM_LOG:-/dev/null}"
+      sleep "$s"
+      break;;
+    -*) ;;
+    *) break;;
+  esac
+done
+exec /usr/bin/git "$@"
