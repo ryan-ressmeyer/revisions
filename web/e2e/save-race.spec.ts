@@ -372,8 +372,16 @@ async function collect(server: Server, it: Iter) {
 	const branch = git(server.paper, "branch", "--show-current");
 	const head = git(server.paper, "rev-parse", "--short", "HEAD");
 	const porcelain = git(server.paper, "status", "--porcelain");
-	const disk = readFileSync(join(server.paper, "main.tex"), "utf8");
-	const headText = gitRaw(server.paper, "show", "HEAD:main.tex");
+	// The file the editor saved, which is main.tex unless another was open.
+	const file =
+		decodeURIComponent(
+			it.net
+				.filter((n) => n.m === "PUT")
+				.at(-1)
+				?.u.match(/path=([^&]+)/)?.[1] ?? "",
+		) || "main.tex";
+	const disk = readFileSync(join(server.paper, file), "utf8");
+	const headText = gitRaw(server.paper, "show", `HEAD:${file}`);
 	const ed = await editorDoc(it.page);
 	const status = await it.page
 		.locator(".save-status")
@@ -466,6 +474,7 @@ async function collect(server: Server, it: Iter) {
 		offsetMs: it.offsetMs,
 		outcome,
 		opRefused,
+		file,
 		branch,
 		head,
 		porcelain,
@@ -1118,13 +1127,10 @@ test("commit-checkout: tab types, commit then checkout back to back over HTTP", 
 				});
 			})(),
 		]);
-		const committed = git(
-			server.paper,
-			"show",
-			"--stat",
-			"--format=",
-			"main",
-		).includes("main.tex");
+		// The typed text in the commit, in whichever file the editor had open.
+		const committed = gitRaw(server.paper, "show", "--format=", "main")
+			.split("\n")
+			.some((l) => l.startsWith("+") && hasMark(l));
 		await collect(server, {
 			case: "commit-checkout",
 			i,
@@ -1171,6 +1177,15 @@ test("followup: aftermath of SNAPSHOT-WRITTEN and ERROR-SHOWN", async ({
 	await sleep(1500);
 	out.backAlerts = await alerts();
 	out.branchAfterBack = git(server.paper, "branch", "--show-current");
+	// The move prompt now answers Return over uncommitted changes.
+	const movePrompt = page.getByRole("dialog", { name: /Return to branch/ });
+	out.backPrompt = await movePrompt.isVisible();
+	if (out.backPrompt) {
+		out.backPromptCommitOffered = await movePrompt
+			.getByRole("button", { name: "Commit", exact: true })
+			.isVisible();
+		await movePrompt.getByRole("button", { name: "Cancel" }).click();
+	}
 	await p.getByRole("button", { name: /Uncommitted changes/ }).click();
 	const cb = p.getByRole("button", { name: "Commit", exact: true });
 	out.commitButton = {
