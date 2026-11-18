@@ -107,31 +107,6 @@ const CHECK_EVERY = 5 * 60_000;
 const LOCKED =
 	"This is an earlier version, so it cannot be changed. Go back to your branch, or start a branch from this version, to edit.";
 
-// ponytail: temporary switch between the top-bar signal variants
-// (?signal=phrase|mark|chip) so the owner can compare them; delete it and the
-// losing variants once the owner picks one.
-const SIGNAL = new URLSearchParams(location.search).get("signal") ?? "phrase";
-
-/**
- * Where the work stands on this computer, from the state poll: the phrase
- * (which is also the toggle's accessible state) and the chip's short form.
- */
-function workStands(dirty: boolean, unsent: number) {
-	const notSent = `${unsent} not sent`;
-	const phrase =
-		dirty && unsent > 0
-			? `Not committed · ${notSent}`
-			: dirty
-				? "Changes not committed"
-				: unsent > 0
-					? `${unsent} commit${unsent === 1 ? "" : "s"} not sent`
-					: "";
-	const chip = [dirty ? "Not committed" : "", unsent > 0 ? notSent : ""]
-		.filter(Boolean)
-		.join(" · ");
-	return { phrase, chip };
-}
-
 /** The editor and the PDF of one repository, side by side. */
 export function ProjectView({
 	id,
@@ -841,9 +816,14 @@ export function ProjectView({
 
 	const [, owner, name] = id.split("/");
 	const branch = repoState?.git.branch;
-	const dirty = repoState?.git.dirty ?? false;
+	// Where the work stands on this computer; never depends on GitHub.
 	const unsent = repoState?.git.unsent ?? 0;
-	const stands = workStands(dirty, unsent);
+	const stands = [
+		repoState?.git.dirty ? "Not committed" : "",
+		unsent > 0 ? `${unsent} not sent` : "",
+	]
+		.filter(Boolean)
+		.join(" · ");
 	const pdfVersion = Math.max(
 		build?.pdfVersion ?? 0,
 		polledBuild?.pdfVersion ?? 0,
@@ -858,149 +838,139 @@ export function ProjectView({
 
 	return (
 		<div className="project">
-			<header className="topbar">
-				{/* biome-ignore lint/a11y/useValidAnchor: a real link to Home that saves before it navigates */}
-				<a
-					className="brand"
-					href="#/"
-					onClick={async (e) => {
-						if (e.ctrlKey || e.metaKey || e.shiftKey) return;
-						// Home appears only once the text is saved where it was typed.
-						e.preventDefault();
-						if (await flushOpen()) window.location.hash = "#/";
-						else
-							setNotice(
-								"Your latest changes are not saved yet, so Revisions stayed on this manuscript. See the message above the editor.",
-							);
-					}}
-				>
-					Revisions
-				</a>
-				<button
-					type="button"
-					className={`quiet files-toggle ${treeOpen === "open" ? "on" : ""}`}
-					aria-expanded={treeOpen === "open"}
-					aria-controls="file-tree"
-					onClick={() => setTreeOpen((t) => (t === "open" ? "closed" : "open"))}
-					title="Show or hide the repository's files"
-				>
-					Files
-				</button>
-				<span className="repo">
-					<span className="repo-name">
-						{owner}/{name}
-					</span>
-					{repoState &&
-						(branch ? (
-							<span className="muted where">{`on branch ${branch}`}</span>
-						) : (
-							<button
-								type="button"
-								className="link where read-only-version"
-								onClick={() => setVersionOpen(true)}
-								title="Why this version cannot be changed, and how to edit"
-							>
-								Read-only: earlier version
-							</button>
-						))}
-				</span>
-				{project &&
-					!project.entryFromConfig &&
-					project.entryCandidates.length > 1 && (
-						<label className="inline-field">
-							Main document
-							<select
-								value={project.entry}
-								onChange={(e) => chooseEntry(e.target.value)}
-							>
-								{project.entryCandidates.map((p) => (
-									<option key={p}>{p}</option>
-								))}
-							</select>
-						</label>
-					)}
-				<span className="spacer" />
-				<fieldset className="segmented">
-					<legend className="visually-hidden">Show</legend>
-					{(
-						[
-							["editor", "Editor", "Show only the editor"],
-							["both", "Both", "Show the editor and the PDF side by side"],
-							["pdf", "PDF", "Show only the PDF"],
-						] as const
-					).map(([value, label, title]) => (
-						<button
-							key={value}
-							type="button"
-							aria-pressed={panes === value}
-							onClick={() => setPanes(value)}
-							title={title}
-						>
-							{label}
-						</button>
-					))}
-				</fieldset>
-				{SIGNAL === "chip" && stands.chip && (
-					<span className="work-chip" aria-hidden="true">
-						{stands.chip}
-					</span>
-				)}
-				<button
-					ref={gitButton}
-					type="button"
-					className={`quiet changes-toggle ${gitOpen ? "on" : ""}`}
-					aria-expanded={gitOpen}
-					aria-label={
-						stands.phrase ? `Changes & history: ${stands.phrase}` : undefined
-					}
-					onClick={() => setGitOpen((o) => !o)}
-					title="Commit your changes, send them to GitHub, and see the history"
-				>
-					{SIGNAL === "phrase" && stands.phrase
-						? stands.phrase
-						: "Changes & history"}
-					{SIGNAL === "mark" && dirty && (
-						<span
-							className="dot"
-							aria-hidden="true"
-							title="Changes not committed"
-						/>
-					)}
-					{SIGNAL === "mark" && unsent > 0 && (
-						<span
-							className="count"
-							aria-hidden="true"
-							title={`${unsent} commit${unsent === 1 ? "" : "s"} not sent`}
-						>
-							↑{unsent}
-						</span>
-					)}
-				</button>
-				{running ? (
-					<span className="row">
-						<span className="building" role="status">
-							<span className="spinner" aria-hidden="true" /> Building the PDF…{" "}
-							<Elapsed since={build?.startedAt ?? null} />
-						</span>
-						<button
-							type="button"
-							onClick={() => cancelBuild(id).then(setBuild)}
-						>
-							Cancel
-						</button>
-					</span>
-				) : (
+			<header className="topbar two-rows">
+				<div className="bar-row">
+					{/* biome-ignore lint/a11y/useValidAnchor: a real link to Home that saves before it navigates */}
+					<a
+						className="brand"
+						href="#/"
+						onClick={async (e) => {
+							if (e.ctrlKey || e.metaKey || e.shiftKey) return;
+							// Home appears only once the text is saved where it was typed.
+							e.preventDefault();
+							if (await flushOpen()) window.location.hash = "#/";
+							else
+								setNotice(
+									"Your latest changes are not saved yet, so Revisions stayed on this manuscript. See the message above the editor.",
+								);
+						}}
+					>
+						Revisions
+					</a>
 					<button
 						type="button"
-						className="primary"
-						onClick={runBuild}
-						title={`Build the PDF (${keys}Enter or ${keys}S)`}
-						aria-keyshortcuts="Control+Enter Meta+Enter Control+S Meta+S"
+						className={`quiet files-toggle ${treeOpen === "open" ? "on" : ""}`}
+						aria-expanded={treeOpen === "open"}
+						aria-controls="file-tree"
+						onClick={() =>
+							setTreeOpen((t) => (t === "open" ? "closed" : "open"))
+						}
+						title="Show or hide the repository's files"
 					>
-						Build PDF
+						Files
 					</button>
-				)}
-				{settings}
+					<span className="repo">
+						<span className="repo-name" title={`${owner}/${name}`}>
+							{owner}/{name}
+						</span>
+						{repoState &&
+							(branch ? (
+								<span
+									className="muted where"
+									title={`on branch ${branch}`}
+								>{`on branch ${branch}`}</span>
+							) : (
+								<button
+									type="button"
+									className="link where read-only-version"
+									onClick={() => setVersionOpen(true)}
+									title="Why this version cannot be changed, and how to edit"
+								>
+									Read-only: earlier version
+								</button>
+							))}
+					</span>
+					<span className="spacer" />
+					{settings}
+				</div>
+				<div className="bar-row">
+					{project &&
+						!project.entryFromConfig &&
+						project.entryCandidates.length > 1 && (
+							<label className="inline-field" title="Main document">
+								<span>Main document</span>
+								<select
+									value={project.entry}
+									onChange={(e) => chooseEntry(e.target.value)}
+								>
+									{project.entryCandidates.map((p) => (
+										<option key={p}>{p}</option>
+									))}
+								</select>
+							</label>
+						)}
+					<fieldset className="segmented">
+						<legend className="visually-hidden">Show</legend>
+						{(
+							[
+								["editor", "Editor", "Show only the editor"],
+								["both", "Both", "Show the editor and the PDF side by side"],
+								["pdf", "PDF", "Show only the PDF"],
+							] as const
+						).map(([value, label, title]) => (
+							<button
+								key={value}
+								type="button"
+								aria-pressed={panes === value}
+								onClick={() => setPanes(value)}
+								title={title}
+							>
+								{label}
+							</button>
+						))}
+					</fieldset>
+					<span className="spacer" />
+					{stands && (
+						<span className="work-chip" aria-hidden="true" title={stands}>
+							{stands}
+						</span>
+					)}
+					<button
+						ref={gitButton}
+						type="button"
+						className={`quiet changes-toggle ${gitOpen ? "on" : ""}`}
+						aria-expanded={gitOpen}
+						aria-label={stands ? `Changes & history: ${stands}` : undefined}
+						onClick={() => setGitOpen((o) => !o)}
+						title="Commit your changes, send them to GitHub, and see the history"
+					>
+						Changes &amp; history
+					</button>
+					{running ? (
+						<span className="row">
+							<span className="building" role="status">
+								<span className="spinner" aria-hidden="true" /> Building the
+								PDF… <Elapsed since={build?.startedAt ?? null} />
+							</span>
+							<button
+								type="button"
+								onClick={() => cancelBuild(id).then(setBuild)}
+							>
+								Cancel
+							</button>
+						</span>
+					) : (
+						<button
+							type="button"
+							className="primary"
+							onClick={runBuild}
+							title={`Build the PDF (${keys}Enter or ${keys}S)`}
+							aria-keyshortcuts="Control+Enter Meta+Enter Control+S Meta+S"
+						>
+							Build PDF
+						</button>
+					)}
+				</div>
 			</header>
 			{updateNotice}
 			<div className="notice" role="status" aria-live="polite">

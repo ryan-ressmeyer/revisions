@@ -240,7 +240,7 @@ While signed in, Revisions SHALL fetch from GitHub when a project opens, when Ch
 
 ### Requirement: Where the work stands
 
-With Changes & history closed, the top bar SHALL signal when there are uncommitted changes and when there are unsent commits. Neither signal SHALL depend on contacting GitHub. GitHub's side SHALL appear only inside Changes & history. The count on Send SHALL be the number of unsent commits [1, Q9, Q13]. [NEEDS CLARIFICATION: The form of the top-bar signal. Candidates are a short phrase on the Changes & history button ("Changes not committed", then "2 commits not sent") and a compact mark with a count. The owner will choose by comparing variants in the running app.]
+With Changes & history closed, the top bar SHALL signal when there are uncommitted changes and when there are unsent commits. Neither signal SHALL depend on contacting GitHub. GitHub's side SHALL appear only inside Changes & history. The count on Send SHALL be the number of unsent commits [1, Q9, Q13]. The top bar SHALL have two rows at every width: where you are (the project and its branch or snapshot) above what you do (the main document, the panes, Changes & history, and the build). A chip beside Changes & history SHALL read "Not committed", "N not sent", or both joined by " · ", and SHALL never depend on GitHub [1, Q17].
 
 #### Scenario: Uncommitted changes
 
@@ -399,6 +399,8 @@ Force-push SHALL list the remote commits it will erase and SHALL use `--force-wi
 
 **GitHub's side on the top-bar button.** Rejected for lack of space; it stays inside the panel [1, Q13].
 
+**A phrase on the Changes & history button, or a compact mark with a count.** The phrase replaced the button's label ("Changes not committed", then "2 commits not sent"); the mark kept the label and added a dot and an unsent count. Both were built and compared in the running app beside the chip, and rejected for the chip [1, Q17].
+
 **A full-width banner or a strip above the editor on a snapshot.** Replaced by the header indicator, which adds nothing to the top bar [1, Q15].
 
 ## Prior art
@@ -409,7 +411,7 @@ Force-push SHALL list the remote commits it will erase and SHALL use `--force-wi
 
 ## Unresolved questions
 
-- [NEEDS CLARIFICATION: The form of the top-bar signal for uncommitted and unsent work. See Requirement: Where the work stands.]
+None.
 
 ## Sources
 

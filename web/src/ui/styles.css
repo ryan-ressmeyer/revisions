@@ -1515,13 +1515,6 @@ summary {
 	background: var(--surface-2);
 }
 
-.dot {
-	width: 0.5rem;
-	height: 0.5rem;
-	border-radius: 50%;
-	background: var(--comment-line);
-}
-
 /* The panel covers the PDF side, so the editor stays usable beside it. */
 .right-pane {
 	position: relative;
@@ -2347,4 +2340,57 @@ pre.command {
 	display: flex;
 	align-items: center;
 	gap: 0.75rem;
+}
+
+/* A project's top bar: where you are, then what you do, at every width.
+   Long things shrink with an ellipsis instead of adding a row. */
+.topbar.two-rows {
+	flex-direction: column;
+	align-items: stretch;
+	flex-wrap: nowrap;
+	gap: 0.4rem;
+}
+
+.bar-row {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+	min-width: 0;
+}
+
+.bar-row > * {
+	flex-shrink: 0;
+}
+
+.bar-row > .repo,
+.bar-row > .inline-field,
+.bar-row > .work-chip {
+	flex-shrink: 1;
+	min-width: 0;
+}
+
+.bar-row > .spacer {
+	flex-shrink: 1;
+}
+
+.bar-row .row {
+	flex-wrap: nowrap;
+}
+
+.bar-row .repo > *,
+.bar-row .inline-field > span,
+.bar-row > .work-chip {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.bar-row > .inline-field {
+	overflow: hidden;
+}
+
+.bar-row .inline-field select {
+	min-width: 4rem;
+	flex-shrink: 1;
 }

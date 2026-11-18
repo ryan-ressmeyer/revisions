@@ -248,7 +248,7 @@ export function GitPanel({
 			"commit",
 			() => gitCommit(id, message),
 			(s) =>
-				s.ahead > 0 && s.permissions.push
+				s.unsent > 0 && s.permissions.push
 					? "Committed on this computer. Send it when you want your co-authors to see it."
 					: "Committed on this computer.",
 		);
@@ -638,8 +638,8 @@ function where(s: GitStatus): string {
 	if (s.upstream === null)
 		return `On branch ${s.branch}, which is only on this computer so far`;
 	const parts = [`On branch ${s.branch}`];
-	if (s.ahead > 0)
-		parts.push(`${s.ahead} commit${s.ahead === 1 ? "" : "s"} to send`);
+	if (s.unsent > 0)
+		parts.push(`${s.unsent} commit${s.unsent === 1 ? "" : "s"} to send`);
 	if (s.behind > 0)
 		parts.push(
 			`${s.behind} commit${s.behind === 1 ? "" : "s"} waiting on GitHub`,

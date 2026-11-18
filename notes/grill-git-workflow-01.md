@@ -31,7 +31,8 @@ The user asked for this session after reporting a large yellow read-only banner 
 
 ### Status display
 - GitHub's side (commits to get, and whether GitHub could be reached) shows inside the Changes & history panel only (Q13).
-- The top bar signals uncommitted or unsent work. Its form is undecided and will be chosen by the user comparing variants in the running app. The phrase on the button chosen in Q9 is one candidate, not the agreed design (Q9, Q13).
+- The top bar signals uncommitted or unsent work. The phrase on the button chosen in Q9 was one candidate, not the agreed design (Q9, Q13).
+- Decided during implementation (Q17), after comparing three variants in the running app: a chip beside Changes & history reads "Not committed", "N not sent", or both joined by " · ". The phrase on the button and a compact mark with a count are rejected. The top bar has two rows at every width: where you are (Revisions, Files, the project and its branch, Settings) above what you do (Main document, the panes, the chip, Changes & history, Build PDF).
 
 ### Save safety
 - The released save check stays: a save carries only the hash of the file it was based on. The experiment's per-save checkout identity is dropped (Q8).
@@ -87,7 +88,7 @@ One Opus subagent tested the released code (`ca51d00`), exported to a scratch di
 - Whether real GitHub fetches widen the window in practice was not tested.
 
 ## Open questions
-- [NEEDS CLARIFICATION: The form of the top-bar signal for uncommitted or unsent work, to be chosen by the user comparing variants in the running app.]
+None.
 
 ## Interview (verbatim answers)
 Questions are condensed from the session. Answers are reproduced verbatim.
@@ -142,6 +143,12 @@ Questions are condensed from the session. Answers are reproduced verbatim.
 
 **Q16 (implementation, 2026-11-17). Saving before a move blocks Return when a snapshot has refused the editor's text, which leaves the user on the snapshot until they copy the text and reload. Keep that, or let refused text not block Return?**
 > I'd rather not have refused text block return.
+
+**Q17 (implementation, 2026-11-17). Which top-bar signal, after comparing three variants in the running app (a phrase on the Changes & history button, a compact mark with a count, or a chip beside the button)? Then, which split for a two-row top bar?**
+> I like the chip quite a bit. I think that we should be explicit about the two tier top bar though so that the layout is familiar on all screen sizes (ideally).
+
+Chosen split:
+> Where / what
 
 **Plan approval.**
 > I'd advocate for actually just removing the experiment. There's no purpose keeping it since this supercedes. Otherwise this looks good.

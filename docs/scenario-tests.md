@@ -248,8 +248,8 @@ Requirements from here on are in `specs/git-workflow.md`.
 
 | Scenario | Test |
 |---|---|
-| Uncommitted changes | `pending` |
-| Unsent commits | `pending` |
+| Uncommitted changes | `web/e2e/git.spec.ts: "Uncommitted changes: once an edit is saved, the top bar reads Not committed"` |
+| Unsent commits | `web/e2e/git.spec.ts: "Unsent commits: a commit on a branch never sent shows 1 not sent in the top bar and on Send, and the signal clears after Send"` |
 
 ## Send and open a pull request
 
@@ -291,7 +291,7 @@ Requirements from here on are in `specs/git-workflow.md`.
 
 | Scenario | Test |
 |---|---|
-| Commit | `pending` |
+| Commit | `web/e2e/git.spec.ts: "Commit: every change is in the commit, which becomes the newest in the graph, and the top bar signals an unsent commit"` |
 
 ## Destructive-operation confirmation
 

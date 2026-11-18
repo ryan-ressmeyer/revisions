@@ -128,33 +128,85 @@ async function commit(page: Page, message: string) {
 	);
 }
 
-test("Commit: an edit becomes the newest commit in the graph", async ({
+/** The top bar's note on uncommitted and unsent work, beside its button. */
+const chip = (page: Page) => topbar(page).locator(".work-chip");
+const changesButton = (page: Page) =>
+	topbar(page).getByRole("button", { name: /^Changes & history/ });
+
+test("Uncommitted changes: once an edit is saved, the top bar reads Not committed", async ({
+	page,
+}) => {
+	await open(page);
+	await expect(changesButton(page)).toHaveAccessibleName("Changes & history");
+	await expect(chip(page)).toHaveCount(0);
+	await typeAtStart(page, "% not yet committed\n");
+	await expect(chip(page)).toHaveText("Not committed");
+	await expect(changesButton(page)).toHaveAccessibleName(
+		"Changes & history: Not committed",
+	);
+});
+
+test("Unsent commits: a commit on a branch never sent shows 1 not sent in the top bar and on Send, and the signal clears after Send", async ({
+	page,
+	github,
+}) => {
+	await open(page);
+	const p = await openPanel(page);
+	await p.getByRole("button", { name: "Branch…" }).click();
+	const branches = page.getByRole("dialog", { name: "Branches" });
+	await branches.getByLabel("New branch name").fill("unsent");
+	await branches.getByRole("button", { name: "Create and switch" }).click();
+	await expect(topbar(page).getByText("on branch unsent")).toBeVisible();
+
+	await typeAtStart(page, "% unsent\n");
+	await commit(page, "Not sent yet");
+	await expect(p.getByRole("status")).toContainText(
+		"Send it when you want your co-authors to see it.",
+	);
+	await expect(chip(page)).toHaveText("1 not sent");
+	await expect(changesButton(page)).toHaveAccessibleName(
+		"Changes & history: 1 not sent",
+	);
+	const send = p.getByRole("button", { name: "Send", exact: true });
+	await expect(send.locator(".count")).toHaveText("1");
+
+	await send.click();
+	await expect(p.getByRole("status")).toContainText("Sent");
+	expect(git(bare(github), "log", "-1", "--format=%s", "unsent")).toBe(
+		"Not sent yet",
+	);
+	await expect(chip(page)).toHaveCount(0);
+	await expect(send.locator(".count")).toHaveCount(0);
+	await expect(changesButton(page)).toHaveAccessibleName("Changes & history");
+});
+
+test("Commit: every change is in the commit, which becomes the newest in the graph, and the top bar signals an unsent commit", async ({
 	page,
 	server,
 }) => {
 	await open(page);
-	await expect(
-		page.getByRole("button", { name: "Changes & history" }),
-	).toBeVisible();
 	await typeAtStart(page, "% a note for the panel\n");
-	await expect(
-		page.getByRole("button", { name: /Changes & history: .*not committed/i }),
-	).toBeVisible();
+	writeFileSync(join(server.paper, "notes.txt"), "a new file\n");
+	await expect(chip(page)).toHaveText("Not committed");
 
 	const p = await openPanel(page);
 	await p.getByRole("button", { name: /Uncommitted changes/ }).click();
 	await expect(
 		p.getByRole("listitem").filter({ hasText: "main.tex" }).first(),
 	).toContainText("changed");
-	await expect(p.locator(".diff-add")).toContainText("% a note for the panel");
+	await expect(
+		p.locator(".diff-add").filter({ hasText: "% a note for the panel" }),
+	).toBeVisible();
 
 	await commit(page, "Add a note");
 	expect(git(server.paper, "log", "-1", "--format=%s")).toBe("Add a note");
-	await expect(
-		page.getByRole("button", {
-			name: /^Changes & history(?!.*not committed)/i,
-		}),
-	).toBeVisible();
+	expect(git(server.paper, "status", "--porcelain")).toBe("");
+	expect(
+		git(server.paper, "show", "--name-only", "--format=", "HEAD")
+			.split("\n")
+			.sort(),
+	).toEqual(["main.tex", "notes.txt"]);
+	await expect(chip(page)).toHaveText("1 not sent");
 	await expect(
 		history(page).getByRole("listitem").first().getByText("main", {
 			exact: true,

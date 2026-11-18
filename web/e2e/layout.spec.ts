@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
@@ -149,4 +150,50 @@ test("File name: a name that starts with punctuation reads in order", async ({
 		return [left(0), left(1)];
 	});
 	expect(bang).toBeLessThan(n);
+});
+
+test("Top bar: two rows at every width, where you are above what you do, and the chip never adds a row", async ({
+	page,
+	server,
+}) => {
+	await openPaper(page);
+	const bar = page.getByRole("banner");
+	const settings = bar.getByRole("button", { name: "Settings" });
+	const build = bar.getByRole("button", { name: "Build PDF" });
+	await expect(bar.getByLabel("Main document")).toBeVisible();
+	const layout = async () => {
+		const [s, b, h] = await Promise.all([
+			settings.boundingBox(),
+			build.boundingBox(),
+			bar.boundingBox(),
+		]);
+		if (!s || !b || !h) throw new Error("the top bar is not laid out");
+		expect(s.y + s.height).toBeLessThanOrEqual(b.y);
+		return h.height;
+	};
+	await page.setViewportSize({ width: 1280, height: 800 });
+	const clean = await layout();
+	await page.setViewportSize({ width: 800, height: 800 });
+	expect(await layout()).toBe(clean);
+
+	// The longest chip: uncommitted changes and two unsent commits.
+	const git = (...args: string[]) =>
+		execFileSync("git", ["-C", server.paper, ...args], {
+			env: {
+				...process.env,
+				GIT_AUTHOR_NAME: "Ada Example",
+				GIT_AUTHOR_EMAIL: "ada@example.com",
+				GIT_COMMITTER_NAME: "Ada Example",
+				GIT_COMMITTER_EMAIL: "ada@example.com",
+			},
+		});
+	git("commit", "--quiet", "--allow-empty", "-m", "One");
+	git("commit", "--quiet", "--allow-empty", "-m", "Two");
+	writeFileSync(join(server.paper, "notes.txt"), "Not committed.\n");
+	await expect(bar.locator(".work-chip")).toHaveText(
+		"Not committed · 2 not sent",
+	);
+	expect(await layout()).toBe(clean);
+	await page.setViewportSize({ width: 1280, height: 800 });
+	expect(await layout()).toBe(clean);
 });
