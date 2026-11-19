@@ -37,6 +37,30 @@ test("Several candidates: opens the first entry file and offers the other", asyn
 	await expect(openFileName(page)).toHaveText("supplement.tex");
 });
 
+test("One candidate: the top bar shows the main document, and the picker is disabled", async ({
+	page,
+	server,
+}) => {
+	await openPaper(page);
+	const supplement = join(server.paper, "supplement.tex");
+	writeFileSync(
+		supplement,
+		`%${readFileSync(supplement, "utf8").replace(/\r?\n/g, "\n%")}`,
+	);
+	await page.reload();
+	const entry = page.getByLabel("Main document");
+	await expect(entry).toBeDisabled();
+	await expect(entry).toHaveValue("main.tex");
+
+	writeFileSync(
+		join(server.paper, ".revisions.toml"),
+		'entry = "supplement.tex"\n',
+	);
+	await page.reload();
+	await expect(entry).toBeDisabled();
+	await expect(entry).toHaveValue("supplement.tex");
+});
+
 test("Autosave: an edit reaches the file on disk byte for byte", async ({
 	page,
 	server,

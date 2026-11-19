@@ -64,7 +64,7 @@ Requirements for opening a shared URL, moving with uncommitted work, viewing ear
 
 ### Requirement: Entry-file selection
 
-Revisions SHALL use the entry file named in `.revisions.toml` when present. Otherwise it SHALL detect `.tex` files that contain `\documentclass`, use the first one detected (using alphabetical order), and let the user select another. 
+Revisions SHALL use the entry file named in `.revisions.toml` when present. Otherwise it SHALL detect `.tex` files that contain `\documentclass`, use the first one detected (using alphabetical order), and let the user select another. The top bar SHALL always show the main document; when there is nothing to choose, the picker SHALL be shown disabled.
 
 #### Scenario: Several candidates
 
@@ -75,6 +75,11 @@ Revisions SHALL use the entry file named in `.revisions.toml` when present. Othe
 
 - WHEN `.revisions.toml` names an entry file
 - THEN Revisions uses that file without auto-detection
+
+#### Scenario: One candidate
+
+- WHEN a repository has one `.tex` file with `\documentclass`, or `.revisions.toml` names the entry file
+- THEN the top bar shows that file as the main document in a disabled picker
 
 ### Requirement: Split view with SyncTeX
 

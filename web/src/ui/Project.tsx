@@ -894,21 +894,36 @@ export function ProjectView({
 					{settings}
 				</div>
 				<div className="bar-row">
-					{project &&
-						!project.entryFromConfig &&
-						project.entryCandidates.length > 1 && (
-							<label className="inline-field" title="Main document">
-								<span>Main document</span>
-								<select
-									value={project.entry}
-									onChange={(e) => chooseEntry(e.target.value)}
-								>
-									{project.entryCandidates.map((p) => (
-										<option key={p}>{p}</option>
-									))}
-								</select>
-							</label>
-						)}
+					{project && (
+						<label
+							className="inline-field"
+							title={
+								project.entryFromConfig
+									? "Main document, set in .revisions.toml"
+									: !project.entry
+										? "Main document: no .tex file has \\documentclass"
+										: project.entryCandidates.length < 2
+											? "Main document, the only .tex file with \\documentclass"
+											: "Main document"
+							}
+						>
+							<span>Main document</span>
+							<select
+								value={project.entry}
+								disabled={project.entryCandidates.length < 2}
+								onChange={(e) => chooseEntry(e.target.value)}
+							>
+								{(project.entryCandidates.length
+									? project.entryCandidates
+									: [project.entry]
+								).map((p) => (
+									<option key={p} value={p}>
+										{p || "None"}
+									</option>
+								))}
+							</select>
+						</label>
+					)}
 					<fieldset className="segmented">
 						<legend className="visually-hidden">Show</legend>
 						{(

@@ -8,6 +8,7 @@ Every Scenario in `specs/overview.md` and then `specs/git-workflow.md`, grouped 
 |---|---|
 | Several candidates | `internal/server/routes_files_test.go: TestProjectOffersEveryEntryCandidate`, `TestChoosingAnotherEntry`; `internal/workspace/project_test.go: TestEntryIsTheFirstFileWithDocumentclass`; `web/e2e/editing.spec.ts: "Several candidates: opens the first entry file and offers the other"` |
 | Config override | `internal/server/routes_files_test.go: TestConfigEntryOverridesDetection`; `internal/workspace/project_test.go: TestConfigNamesEntryAndEngine` |
+| One candidate | `web/e2e/editing.spec.ts: "One candidate: the top bar shows the main document, and the picker is disabled"` |
 
 ## Split view with SyncTeX
 
