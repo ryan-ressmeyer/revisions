@@ -26,6 +26,8 @@ The old repository is read-only evidence of earlier choices. It is not a feature
 
 **Installing.** The collaborator follows a written page for macOS, Linux, or Windows that installs Git and a TeX distribution and then pastes one command. The command downloads Revisions from the latest GitHub Release of the public repository, which is MIT licensed, and puts it where the platform's app launcher finds it [9]. If `latexmk` is missing, Revisions guides them to install MacTeX, MiKTeX, or TeX Live [1, Q21, Q34]. When a new version is released, Revisions says so on its own screens, and one button installs it and restarts Revisions in the same tab [12].
 
+**Feedback.** A Feedback button in the top bar opens a filled-in GitHub issue form for a problem, an idea, or something confusing. A report of a problem carries the last unexpected failure Revisions showed, and a page that fails to draw offers to report itself [16].
+
 ## Reference-level explanation
 
 **Architecture.** Revisions is native-first. TeX compiles on the collaborator's machine, and no hosted compile server exists [1, Q18–Q19]. The application is a local HTTP server bound to loopback and opened in the system browser. The UI is a web app so that a desktop shell can wrap it later [1, Q20]. The server is written in Go and the UI in TypeScript [7]. Code layout and the HTTP contract are in `specs/architecture.md`.
@@ -424,6 +426,25 @@ Update SHALL first save pending edits as Quit does, and SHALL refuse and say why
 - WHEN the latest release is not higher than the running version, is a pre-release, or the running build is a development build
 - THEN Revisions offers no update
 
+### Requirement: Feedback
+
+The top bar of the home screen and the project SHALL hold a Feedback button that offers three kinds of feedback: something does not work, an idea, and something confusing. Each SHALL open GitHub's new-issue form for that kind on the public Revisions repository in a new tab, filled in with the running version, the platform, the Git and `latexmk` versions, and the browser. Revisions SHALL post nothing itself: the user reads, edits, and submits the issue on GitHub, and the form SHALL say that issues are public. Revisions SHALL keep the last unexpected failure it showed: a server error the user cannot act on (`internal`, `git_failed`, `host_failed`, an answer that is not the contract's), no answer from the server, or an uncaught error in the page. The report of something that does not work SHALL carry that failure's message, cut to fit a URL. Revisions SHALL never add a repository name, file path, or manuscript text of its own; the message of a failure is added as Revisions showed it. When the page itself fails to draw, Revisions SHALL show a plain explanation with a button that reports the failure and a button that reloads the page, in place of a blank page [16].
+
+#### Scenario: Give feedback
+
+- WHEN the user presses Feedback and chooses an idea
+- THEN GitHub's form for ideas opens in a new tab, filled in with the version and platform
+
+#### Scenario: Report a failure
+
+- WHEN Revisions has shown an unexpected failure and the user then reports that something does not work
+- THEN GitHub's form for problems opens with that failure's message filled in
+
+#### Scenario: Crash
+
+- WHEN the page fails to draw
+- THEN Revisions shows what happened with Report this problem and Reload, and Report this problem opens GitHub's form for problems with the error filled in
+
 ### Requirement: Path containment
 
 Every file path Revisions reads or writes SHALL resolve inside the repository root. Revisions SHALL refuse symbolic links. It SHALL refuse paths inside the repository's `.git` directory, because writing hooks or configuration there would execute code.
@@ -563,3 +584,4 @@ Redraft's OpenIrisDPI trust profile, protected objects, and separate Source View
 - [13] Owner's approved GitHub credential renewal and in-place reconnection plan, 2026-11-13, following a warm cached sign-in whose token GitHub rejected with 401.
 - [14] GitHub OAuth App authorization, expiring access tokens and device-flow refresh: https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps#expiring-access-tokens; token expiry and revocation: https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/token-expiration-and-revocation.
 - [15] `notes/grill-git-workflow-01.md`. Git workflow interview, 2026-11-16 to 2026-11-17, and `specs/git-workflow.md`, which it produced.
+- [16] The owner's request of 2026-11-19 for a way to send feedback to GitHub from the UI, in general and when something breaks, and the owner's choice of a prefilled GitHub form over posting from Revisions.

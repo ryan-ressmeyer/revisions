@@ -166,6 +166,14 @@ Every Scenario in `specs/overview.md` and then `specs/git-workflow.md`, grouped 
 | Folder not writable | `internal/update/update_test.go: TestInstallSaysWhenTheFolderIsNotWritable` (skipped on Windows and as root) |
 | No downgrade or pre-release | `internal/update/update_test.go: TestNewer`; `internal/server/routes_app_test.go: TestADevBuildOffersNoUpdate` |
 
+## Feedback
+
+| Scenario | Test |
+|---|---|
+| Give feedback | `web/e2e/feedback.spec.ts: "Give feedback: each kind opens its GitHub form filled in with the version and platform, on the start page and in a project"`; `web/src/ui/feedback.test.ts: "opens the form for the kind on the public repository, with the environment filled in"`, `"every kind has an issue form with the fields Revisions fills in"` |
+| Report a failure | `web/e2e/feedback.spec.ts: "Report a failure: an uncaught error in the page fills in the problem report"`; `web/src/ui/feedback.test.ts: "unexpected failures are kept; refusals the user can act on are not"`, `"a problem report carries the failure, cut to fit a URL"` |
+| Crash | `web/src/ui/Feedback.test.tsx: "Crash: a page that fails to draw explains itself and offers to report and reload"` |
+
 ## Path containment
 
 | Scenario | Test |

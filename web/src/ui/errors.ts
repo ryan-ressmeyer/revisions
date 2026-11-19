@@ -1,4 +1,5 @@
 import { ApiError } from "../api/client";
+import { noteProblem } from "./feedback";
 
 // Codes whose server message is accurate but not the best advice for a
 // reader who does not use Git. Every other code shows the server's sentence.
@@ -36,6 +37,7 @@ const plain: Record<string, string> = {
  * collapsed as details.
  */
 export function failure(error: unknown): { text: string; details: string } {
+	noteProblem(error);
 	if (isCode(error, "git_failed")) {
 		return {
 			text: "Git could not finish the job. Nothing else was changed.",
@@ -50,6 +52,7 @@ export function failure(error: unknown): { text: string; details: string } {
 
 /** A sentence for the user about any failure: never a bare error code. */
 export function explain(error: unknown): string {
+	noteProblem(error);
 	if (error instanceof ApiError) {
 		if (error.code === "git_failed") {
 			return `Git could not finish the job. Its message was: ${error.message.replace(/^Git reported a problem: /, "")}`;

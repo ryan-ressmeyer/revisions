@@ -1,0 +1,28 @@
+# Field ids `problem` and `environment` are filled in by web/src/ui/feedback.ts.
+name: Something doesn't work
+description: Revisions did something wrong, showed an error, or stopped.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Issues here are public. Leave out anything private, such as manuscript text or the names of private repositories.
+  - type: textarea
+    id: what
+    attributes:
+      label: What were you doing, and what happened?
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+  - type: textarea
+    id: problem
+    attributes:
+      label: Error Revisions showed
+      description: Filled in by Revisions when it saw one. Remove anything private.
+  - type: textarea
+    id: environment
+    attributes:
+      label: Your setup
+      description: Filled in by Revisions.

@@ -1,0 +1,23 @@
+# Field id `environment` is filled in by web/src/ui/feedback.ts.
+name: Something was confusing
+description: A screen, a word, or a step that was hard to understand.
+labels: [question]
+body:
+  - type: markdown
+    attributes:
+      value: Issues here are public. Leave out anything private, such as manuscript text or the names of private repositories.
+  - type: textarea
+    id: confusing
+    attributes:
+      label: What was confusing?
+    validations:
+      required: true
+  - type: textarea
+    id: looked-for
+    attributes:
+      label: What did you expect, or look for?
+  - type: textarea
+    id: environment
+    attributes:
+      label: Your setup
+      description: Filled in by Revisions.

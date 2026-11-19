@@ -15,6 +15,8 @@ import {
 	type UpdateInfo,
 } from "../api/client";
 import { explain } from "./errors";
+import { FeedbackButton } from "./Feedback";
+import { setAbout } from "./feedback";
 import { Modal } from "./Git";
 import { GitGuidance } from "./Guidance";
 import { Home } from "./Home";
@@ -109,6 +111,9 @@ export function App() {
 		const timer = setInterval(load, 60_000);
 		return () => clearInterval(timer);
 	}, []);
+	useEffect(() => {
+		if (env) setAbout(update?.version ?? "", env);
+	}, [env, update]);
 	const [updating, setUpdating] = useState<{
 		target: string;
 		failure: { message: string; command: string } | null;
@@ -211,14 +216,17 @@ export function App() {
 		<UpdateNotice update={update} onUpdate={updateApp} />
 	);
 	const settings = (
-		<SettingsButton
-			auth={auth}
-			onSignedOut={recovered}
-			onReconnect={() => setReconnecting(true)}
-			onQuit={quitApp}
-			version={update?.version ?? ""}
-			updateNotice={notice}
-		/>
+		<>
+			<FeedbackButton />
+			<SettingsButton
+				auth={auth}
+				onSignedOut={recovered}
+				onReconnect={() => setReconnecting(true)}
+				onQuit={quitApp}
+				version={update?.version ?? ""}
+				updateNotice={notice}
+			/>
+		</>
 	);
 	return (
 		<>

@@ -1172,6 +1172,21 @@ summary {
 	resize: vertical;
 }
 
+.feedback {
+	position: relative;
+}
+
+.popover.feedback-menu {
+	position: absolute;
+	top: calc(100% + 0.25rem);
+	right: 0;
+	width: 16rem;
+}
+
+.feedback-menu .help {
+	margin: 0.25rem 0 0;
+}
+
 .popover-error {
 	color: var(--danger);
 	margin: 0;

@@ -1,0 +1,23 @@
+# Field id `environment` is filled in by web/src/ui/feedback.ts.
+name: I have an idea
+description: Something you wish Revisions could do, or do differently.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: Issues here are public. Leave out anything private, such as manuscript text or the names of private repositories.
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like Revisions to do?
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: What would it help you with?
+  - type: textarea
+    id: environment
+    attributes:
+      label: Your setup
+      description: Filled in by Revisions.
