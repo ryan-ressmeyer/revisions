@@ -160,15 +160,29 @@ test("Top bar: two rows at every width, where you are above what you do, and the
 	const bar = page.getByRole("banner");
 	const settings = bar.getByRole("button", { name: "Settings" });
 	const build = bar.getByRole("button", { name: "Build PDF" });
-	await expect(bar.getByLabel("Main document")).toBeVisible();
+	const entry = bar.getByLabel("Main document");
+	const files = bar.getByRole("button", { name: "Files" });
+	const panes = bar.getByRole("group", { name: "Show" });
+	await expect(entry).toBeVisible();
 	const layout = async () => {
-		const [s, b, h] = await Promise.all([
+		const [s, b, h, e, f, p] = await Promise.all([
 			settings.boundingBox(),
 			build.boundingBox(),
 			bar.boundingBox(),
+			entry.boundingBox(),
+			files.boundingBox(),
+			panes.boundingBox(),
 		]);
-		if (!s || !b || !h) throw new Error("the top bar is not laid out");
+		if (!s || !b || !h || !e || !f || !p)
+			throw new Error("the top bar is not laid out");
+		// Where you are, with the main document, above what you do.
 		expect(s.y + s.height).toBeLessThanOrEqual(b.y);
+		expect(e.y + e.height).toBeLessThanOrEqual(b.y);
+		expect(f.y).toBeGreaterThanOrEqual(s.y + s.height);
+		// Files on the left, the panes in the middle, the build on the right.
+		expect(f.x + f.width).toBeLessThanOrEqual(p.x);
+		expect(p.x + p.width).toBeLessThanOrEqual(b.x);
+		expect(Math.abs(p.x + p.width / 2 - (h.x + h.width / 2))).toBeLessThan(2);
 		return h.height;
 	};
 	await page.setViewportSize({ width: 1280, height: 800 });

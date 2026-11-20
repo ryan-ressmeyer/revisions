@@ -240,7 +240,7 @@ While signed in, Revisions SHALL fetch from GitHub when a project opens, when Ch
 
 ### Requirement: Where the work stands
 
-With Changes & history closed, the top bar SHALL signal when there are uncommitted changes and when there are unsent commits. Neither signal SHALL depend on contacting GitHub. GitHub's side SHALL appear only inside Changes & history. The count on Send SHALL be the number of unsent commits [1, Q9, Q13]. The top bar SHALL have two rows at every width: where you are (the project and its branch or snapshot) above what you do (the main document, the panes, Changes & history, and the build). A chip beside Changes & history SHALL read "Not committed", "N not sent", or both joined by " · ", and SHALL never depend on GitHub [1, Q17].
+With Changes & history closed, the top bar SHALL signal when there are uncommitted changes and when there are unsent commits. Neither signal SHALL depend on contacting GitHub. GitHub's side SHALL appear only inside Changes & history. The count on Send SHALL be the number of unsent commits [1, Q9, Q13]. The top bar SHALL have two rows at every width: where you are (the project, its branch or snapshot, and the main document) above what you do (the files, the panes in the middle of the bar, Changes & history, and the build). A chip beside Changes & history SHALL read "Not committed", "N not sent", or both joined by " · ", and SHALL never depend on GitHub [1, Q17].
 
 #### Scenario: Uncommitted changes
 

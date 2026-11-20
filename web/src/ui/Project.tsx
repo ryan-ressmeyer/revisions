@@ -857,18 +857,6 @@ export function ProjectView({
 					>
 						Revisions
 					</a>
-					<button
-						type="button"
-						className={`quiet files-toggle ${treeOpen === "open" ? "on" : ""}`}
-						aria-expanded={treeOpen === "open"}
-						aria-controls="file-tree"
-						onClick={() =>
-							setTreeOpen((t) => (t === "open" ? "closed" : "open"))
-						}
-						title="Show or hide the repository's files"
-					>
-						Files
-					</button>
 					<span className="repo">
 						<span className="repo-name" title={`${owner}/${name}`}>
 							{owner}/{name}
@@ -890,10 +878,6 @@ export function ProjectView({
 								</button>
 							))}
 					</span>
-					<span className="spacer" />
-					{settings}
-				</div>
-				<div className="bar-row">
 					{project && (
 						<label
 							className="inline-field"
@@ -924,6 +908,24 @@ export function ProjectView({
 							</select>
 						</label>
 					)}
+					<span className="spacer" />
+					{settings}
+				</div>
+				<div className="bar-row">
+					<span className="side">
+						<button
+							type="button"
+							className={`quiet files-toggle ${treeOpen === "open" ? "on" : ""}`}
+							aria-expanded={treeOpen === "open"}
+							aria-controls="file-tree"
+							onClick={() =>
+								setTreeOpen((t) => (t === "open" ? "closed" : "open"))
+							}
+							title="Show or hide the repository's files"
+						>
+							Files
+						</button>
+					</span>
 					<fieldset className="segmented">
 						<legend className="visually-hidden">Show</legend>
 						{(
@@ -944,47 +946,48 @@ export function ProjectView({
 							</button>
 						))}
 					</fieldset>
-					<span className="spacer" />
-					{stands && (
-						<span className="work-chip" aria-hidden="true" title={stands}>
-							{stands}
-						</span>
-					)}
-					<button
-						ref={gitButton}
-						type="button"
-						className={`quiet changes-toggle ${gitOpen ? "on" : ""}`}
-						aria-expanded={gitOpen}
-						aria-label={stands ? `Changes & history: ${stands}` : undefined}
-						onClick={() => setGitOpen((o) => !o)}
-						title="Commit your changes, send them to GitHub, and see the history"
-					>
-						Changes &amp; history
-					</button>
-					{running ? (
-						<span className="row">
-							<span className="building" role="status">
-								<span className="spinner" aria-hidden="true" /> Building the
-								PDF… <Elapsed since={build?.startedAt ?? null} />
+					<span className="side end">
+						{stands && (
+							<span className="work-chip" aria-hidden="true" title={stands}>
+								{stands}
 							</span>
+						)}
+						<button
+							ref={gitButton}
+							type="button"
+							className={`quiet changes-toggle ${gitOpen ? "on" : ""}`}
+							aria-expanded={gitOpen}
+							aria-label={stands ? `Changes & history: ${stands}` : undefined}
+							onClick={() => setGitOpen((o) => !o)}
+							title="Commit your changes, send them to GitHub, and see the history"
+						>
+							Changes &amp; history
+						</button>
+						{running ? (
+							<span className="row">
+								<span className="building" role="status">
+									<span className="spinner" aria-hidden="true" /> Building the
+									PDF… <Elapsed since={build?.startedAt ?? null} />
+								</span>
+								<button
+									type="button"
+									onClick={() => cancelBuild(id).then(setBuild)}
+								>
+									Cancel
+								</button>
+							</span>
+						) : (
 							<button
 								type="button"
-								onClick={() => cancelBuild(id).then(setBuild)}
+								className="primary"
+								onClick={runBuild}
+								title={`Build the PDF (${keys}Enter or ${keys}S)`}
+								aria-keyshortcuts="Control+Enter Meta+Enter Control+S Meta+S"
 							>
-								Cancel
+								Build PDF
 							</button>
-						</span>
-					) : (
-						<button
-							type="button"
-							className="primary"
-							onClick={runBuild}
-							title={`Build the PDF (${keys}Enter or ${keys}S)`}
-							aria-keyshortcuts="Control+Enter Meta+Enter Control+S Meta+S"
-						>
-							Build PDF
-						</button>
-					)}
+						)}
+					</span>
 				</div>
 			</header>
 			{updateNotice}
