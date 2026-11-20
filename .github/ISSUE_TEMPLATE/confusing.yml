@@ -1,4 +1,4 @@
-# Field id `environment` is filled in by web/src/ui/feedback.ts.
+# Field id `environment` is filled in by web/src/ui/issues.ts.
 name: Something was confusing
 description: A screen, a word, or a step that was hard to understand.
 labels: [question]

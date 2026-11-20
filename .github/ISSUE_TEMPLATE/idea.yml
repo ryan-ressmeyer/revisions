@@ -1,4 +1,4 @@
-# Field id `environment` is filled in by web/src/ui/feedback.ts.
+# Field id `environment` is filled in by web/src/ui/issues.ts.
 name: I have an idea
 description: Something you wish Revisions could do, or do differently.
 labels: [enhancement]

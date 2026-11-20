@@ -1,5 +1,5 @@
 import { Component, type ReactNode, useState } from "react";
-import { type Kind, noteProblem, reportUrl } from "./feedback";
+import { type Kind, noteProblem, reportUrl } from "./issues";
 
 const kinds: [Kind, string][] = [
 	["bug", "Something doesn't work"],

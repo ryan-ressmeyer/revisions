@@ -16,10 +16,10 @@ import {
 } from "../api/client";
 import { explain } from "./errors";
 import { FeedbackButton } from "./Feedback";
-import { setAbout } from "./feedback";
 import { Modal } from "./Git";
 import { GitGuidance } from "./Guidance";
 import { Home } from "./Home";
+import { setAbout } from "./issues";
 import { ProjectView } from "./Project";
 import { useRoute } from "./route";
 import { SettingsButton } from "./Settings";

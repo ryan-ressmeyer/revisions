@@ -1,4 +1,4 @@
-# Field ids `problem` and `environment` are filled in by web/src/ui/feedback.ts.
+# Field ids `problem` and `environment` are filled in by web/src/ui/issues.ts.
 name: Something doesn't work
 description: Revisions did something wrong, showed an error, or stopped.
 labels: [bug]

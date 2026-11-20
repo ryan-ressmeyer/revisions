@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
 import { ApiError } from "../api/client";
 import { explain, failure } from "./errors";
-import { issueUrl, lastProblem } from "./feedback";
+import { issueUrl, lastProblem } from "./issues";
 
 const about = {
 	version: "v0.3.0",

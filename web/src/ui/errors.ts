@@ -1,5 +1,5 @@
 import { ApiError } from "../api/client";
-import { noteProblem } from "./feedback";
+import { noteProblem } from "./issues";
 
 // Codes whose server message is accurate but not the best advice for a
 // reader who does not use Git. Every other code shows the server's sentence.
