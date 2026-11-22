@@ -77,6 +77,37 @@ func TestParseURL(t *testing.T) {
 	}
 }
 
+func TestParseRemote(t *testing.T) {
+	t.Setenv("REVISIONS_GITHUB_URL", "file:///srv/remotes")
+	h := New()
+	repo := host.Repo{Owner: "ryan-ressmeyer", Name: "OpenIrisDPI"}
+	for _, raw := range []string{
+		"https://github.com/ryan-ressmeyer/OpenIrisDPI",
+		"https://github.com/ryan-ressmeyer/OpenIrisDPI.git",
+		"https://ryan@github.com/ryan-ressmeyer/OpenIrisDPI.git",
+		"git@github.com:ryan-ressmeyer/OpenIrisDPI.git",
+		"git@github.com:ryan-ressmeyer/OpenIrisDPI",
+		"ssh://git@github.com/ryan-ressmeyer/OpenIrisDPI.git",
+		"file:///srv/remotes/ryan-ressmeyer/OpenIrisDPI.git",
+	} {
+		if got, err := h.ParseRemote(raw); err != nil || got != repo {
+			t.Errorf("ParseRemote(%q) = %v, %v; want %v", raw, got, err, repo)
+		}
+	}
+	for _, raw := range []string{
+		"",
+		"/home/ryan/bare/OpenIrisDPI.git",
+		"https://gitlab.com/ryan-ressmeyer/OpenIrisDPI.git",
+		"git@gitlab.com:ryan-ressmeyer/OpenIrisDPI.git",
+		"https://github.com/ryan-ressmeyer/OpenIrisDPI/tree/main",
+		"git@github.com:ryan-ressmeyer",
+	} {
+		if _, err := h.ParseRemote(raw); !errors.Is(err, host.ErrBadURL) {
+			t.Errorf("ParseRemote(%q) = %v, want ErrBadURL", raw, err)
+		}
+	}
+}
+
 func TestDeviceFlow(t *testing.T) {
 	h, fake := newHost(t)
 	ctx := t.Context()

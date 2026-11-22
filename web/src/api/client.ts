@@ -195,6 +195,8 @@ export type RepoId = string;
 
 export interface RepoSummary {
 	id: RepoId;
+	/** The folder that holds the clone. */
+	path: string;
 	branch: string | null;
 	head: string;
 }
@@ -215,4 +217,14 @@ export interface Opened {
  */
 export function openUrl(url: string): Promise<Opened> {
 	return json("POST", "/api/open", { url });
+}
+
+/**
+ * Uses a Git repository already on this computer, outside the Revisions
+ * folder, as the clone of its `origin`. Errors: 400 `bad_request`, 422
+ * `bad_repo` when the folder is not set up correctly, 409 `repo_exists`, 424
+ * `git_missing`.
+ */
+export function linkFolder(path: string): Promise<{ repo: RepoId }> {
+	return json("POST", "/api/link", { path });
 }

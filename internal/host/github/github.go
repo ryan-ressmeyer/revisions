@@ -108,6 +108,29 @@ func (h *Host) ParseURL(raw string) (host.Repo, host.Ref, error) {
 	return bad()
 }
 
+// sshPrefixes are how Git spells GitHub over SSH.
+var sshPrefixes = []string{"git@github.com:", "ssh://git@github.com/"}
+
+// ParseRemote reads the URL of a clone's origin: GitHub over HTTPS or SSH, or
+// a clone URL of this host.
+func (h *Host) ParseRemote(raw string) (host.Repo, error) {
+	for _, prefix := range append(sshPrefixes, h.web+"/") {
+		if rest, ok := strings.CutPrefix(raw, prefix); ok {
+			raw = "https://github.com/" + rest
+			break
+		}
+	}
+	repo, ref, err := h.ParseURL(raw)
+	if err != nil || ref.Kind != host.RefDefault {
+		return host.Repo{}, host.ErrBadURL
+	}
+	return repo, nil
+}
+
+// GitAliases lists the URL prefixes that Git sends to the base URL of
+// GitAuth instead, so an SSH remote uses the signed-in account too.
+func (h *Host) GitAliases() []string { return sshPrefixes }
+
 func (h *Host) CloneURL(repo host.Repo) string {
 	return h.web + "/" + repo.Owner + "/" + repo.Name + ".git"
 }

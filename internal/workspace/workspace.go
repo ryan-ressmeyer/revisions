@@ -4,6 +4,7 @@
 package workspace
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -79,10 +80,48 @@ func ParseRepoID(s string) (RepoID, error) {
 
 func (id RepoID) String() string { return id.Host + "/" + id.Owner + "/" + id.Name }
 
-// CloneDir is where the repository's clone lives. It does not check that the
-// clone exists.
+// CloneDir is where the repository's clone lives: the folder the user linked,
+// or else its place under Home. It does not check that the clone exists.
 func (p Paths) CloneDir(id RepoID) string {
+	if dir, ok := p.Links()[id.String()]; ok {
+		return dir
+	}
 	return filepath.Join(p.Home, id.Host, id.Owner, id.Name)
+}
+
+// ErrExists reports a repository that already has a clone elsewhere on this
+// computer.
+var ErrExists = errors.New("repository already on this computer")
+
+func (p Paths) linksFile() string { return filepath.Join(p.ConfigDir, "links.json") }
+
+// Links maps repository ids to the folders outside Home that the user linked.
+func (p Paths) Links() map[string]string {
+	links := map[string]string{}
+	if data, err := os.ReadFile(p.linksFile()); err == nil {
+		json.Unmarshal(data, &links)
+	}
+	return links
+}
+
+// Link makes dir, an absolute path without symbolic links, the clone of id.
+// It returns ErrExists when id already has a clone in another folder.
+func (p Paths) Link(id RepoID, dir string) error {
+	if current := p.CloneDir(id); current != dir {
+		if _, err := os.Lstat(current); err == nil {
+			return ErrExists
+		}
+	}
+	links := p.Links()
+	links[id.String()] = dir
+	data, err := json.MarshalIndent(links, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(p.ConfigDir, 0o700); err != nil {
+		return err
+	}
+	return WriteFileAtomic(p.linksFile(), data, 0o600)
 }
 
 // Clone validates the segments and returns the id and its clone directory.

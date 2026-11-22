@@ -35,8 +35,9 @@ func (e *Error) Error() string {
 // Auth is what a network command needs to authenticate: Header is sent to
 // URLs under BaseURL and nowhere else. The zero value sends nothing.
 type Auth struct {
-	BaseURL string // for example "https://github.com/"
-	Header  string // for example "Authorization: Basic ..."
+	BaseURL string   // for example "https://github.com/"
+	Header  string   // for example "Authorization: Basic ..."
+	Aliases []string // URL prefixes Git rewrites to BaseURL, for example "git@github.com:"
 }
 
 // Identity is the author used for a commit when Git has none configured.
@@ -57,12 +58,19 @@ func run(ctx context.Context, dir string, auth Auth, env []string, args ...strin
 	secret := ""
 	if auth.Header != "" {
 		secret = auth.Header[strings.LastIndex(auth.Header, " ")+1:]
-		cmd.Env = append(cmd.Env,
-			"GIT_CONFIG_COUNT=2",
-			"GIT_CONFIG_KEY_0=http."+auth.BaseURL+".extraHeader", "GIT_CONFIG_VALUE_0="+auth.Header,
+		config := [][2]string{
+			{"http." + auth.BaseURL + ".extraHeader", auth.Header},
 			// Only the signed-in account's token is used, never a stored credential.
-			"GIT_CONFIG_KEY_1=credential.helper", "GIT_CONFIG_VALUE_1=",
-		)
+			{"credential.helper", ""},
+		}
+		// An SSH remote goes over HTTPS with the token, leaving .git/config as it is.
+		for _, alias := range auth.Aliases {
+			config = append(config, [2]string{"url." + auth.BaseURL + ".insteadOf", alias})
+		}
+		cmd.Env = append(cmd.Env, fmt.Sprintf("GIT_CONFIG_COUNT=%d", len(config)))
+		for i, kv := range config {
+			cmd.Env = append(cmd.Env, fmt.Sprintf("GIT_CONFIG_KEY_%d=%s", i, kv[0]), fmt.Sprintf("GIT_CONFIG_VALUE_%d=%s", i, kv[1]))
+		}
 	}
 	cmd.Env = append(cmd.Env, env...)
 	var stdout, stderr bytes.Buffer

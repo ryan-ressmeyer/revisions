@@ -117,6 +117,30 @@ Revisions SHALL accept a GitHub commit, branch, or pull-request URL and bring a 
 - WHEN the author shares a commit URL and then pushes again to that branch, and the collaborator opens the URL
 - THEN Revisions opens the commit as a snapshot, and the read-only indicator explains why and offers the way to edit
 
+### Requirement: Link a folder on this computer
+
+Home SHALL accept the path of a folder that already holds a Git repository outside the Revisions folder, so that a manuscript kept and used elsewhere opens without a second clone. A folder inside a repository SHALL link the whole repository. The repository's `origin` SHALL name the repository on GitHub, over HTTPS or SSH, and SHALL decide the repository it is. Linking SHALL need neither sign-in nor GitHub. From then on Revisions SHALL treat the folder as that repository's clone everywhere, including when a link to the repository is opened, and Home SHALL list it with its folder. Revisions SHALL reach an SSH `origin` over HTTPS with the signed-in account, as it does every clone, and SHALL leave the repository's Git configuration unchanged. A folder that does not exist, is not a Git repository, or has no `origin` on GitHub SHALL be refused with a plain explanation that it is not set up correctly, and nothing SHALL be linked. A repository that already has a copy in another folder on this computer SHALL be refused, naming that folder [6].
+
+#### Scenario: Link a folder
+
+- WHEN the user links a folder inside a clone kept outside the Revisions folder, then opens a link to the same repository
+- THEN the project opens on that folder, edits save there, Home lists it with its folder, and no second clone is made
+
+#### Scenario: Folder with an SSH remote
+
+- WHEN a linked repository's `origin` is `git@github.com:<owner>/<name>.git` and the user gets the latest changes
+- THEN Revisions fetches with the signed-in account, and `origin` is unchanged
+
+#### Scenario: Folder not set up correctly
+
+- WHEN the user links a folder that is missing, is not a Git repository, has no `origin`, or has an `origin` that is not on GitHub
+- THEN Revisions says the folder is not set up correctly and why, and links nothing
+
+#### Scenario: Repository already on this computer
+
+- WHEN the user links a folder whose repository Revisions already holds in another folder
+- THEN Revisions refuses and names the folder that holds it
+
 ### Requirement: Uncommitted work before a move
 
 Before a move, Revisions SHALL save pending editor text and SHALL do nothing more if that fails, except that text refused on a snapshot SHALL NOT block a move from it and SHALL stay shown for copying without being saved anywhere. With uncommitted changes, it SHALL show one prompt that names the destination, lists the changed files, and offers Commit, Discard, and Cancel. It SHALL complete the move only after the chosen commit or confirmed discard succeeds. Commit SHALL require a description and SHALL NOT prefill one. Commit SHALL NOT be offered on a snapshot. During an unfinished merge, Revisions SHALL refuse the move without a prompt. When the commit or discard succeeds and the move fails, Revisions SHALL report both outcomes, stay where it is, and SHALL NOT retry on its own. Any uncommitted change SHALL block a move, including changes Git would carry across [1, Q2, Q7].
@@ -420,3 +444,4 @@ None.
 - [3] `notes/feedback-demo-02.md`. Feedback that introduced View this version and the removed-branch message, 2026-11-11.
 - [4] GitHub Docs, "Checking out pull requests locally": https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/reviewing-changes-in-pull-requests/checking-out-pull-requests-locally.
 - [5] `git-merge(1)`, Git 2.53.0.
+- [6] The owner's request of 2026-11-20 to open repositories kept and used outside the Revisions folder, with an error saying a repository is not set up correctly when it is not a Git repository or not linked to GitHub, and the owner's choice to reach SSH remotes over HTTPS with the signed-in account.

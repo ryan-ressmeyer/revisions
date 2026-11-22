@@ -41,6 +41,35 @@ test("First open: a pasted link opens the entry file in the editor", async ({
 	await expect(page.getByRole("link", { name: "ada/paper" })).toBeVisible();
 });
 
+test("Link a folder: a copy kept elsewhere opens in the editor, and a folder that is not set up says so", async ({
+	page,
+	fake,
+}) => {
+	const plain = mkdtempSync(join(tmpdir(), "revisions-plain-"));
+	const own = join(mkdtempSync(join(tmpdir(), "revisions-own-")), "paper");
+	execFileSync("git", [
+		"clone",
+		"--quiet",
+		`${fake.webUrl}/ada/paper.git`,
+		own,
+	]);
+
+	await page.goto("/");
+	const folder = page.getByLabel("Folder on this computer");
+	await folder.fill(plain);
+	await page.getByRole("button", { name: "Link" }).click();
+	await expect(page.getByRole("alert")).toContainText("not set up correctly");
+
+	await folder.fill(own);
+	await page.getByRole("button", { name: "Link" }).click();
+	await expect(page.getByRole("textbox", { name: "Source" })).toBeVisible();
+	expect(await editorText(page)).toContain("\\documentclass[11pt]{article}");
+
+	await page.getByRole("link", { name: "Revisions" }).click();
+	await expect(page.getByRole("link", { name: "ada/paper" })).toBeVisible();
+	await expect(page.getByText(own)).toBeVisible();
+});
+
 test("Dirty clone: the move prompt for that clone shows, the copy as it is stays available, and Commit opens the link", async ({
 	page,
 	server,

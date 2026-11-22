@@ -16,7 +16,7 @@ The old repository is read-only evidence of earlier choices. It is not a feature
 
 **Sharing.** The author pushes a commit and sends the collaborator a GitHub URL for a commit, branch, or pull request [1, Q2, Q26].
 
-**Opening.** The collaborator pastes the URL into Revisions. On first use, Revisions clones the repository to the collaborator's machine. If a clone already exists, Revisions checks out the shared commit. If that clone has uncommitted work, Revisions asks whether to commit or discard it first [1, Q3; 15]. Revisions finds the manuscript's entry file automatically, and the collaborator can choose another one [1, Q36].
+**Opening.** The collaborator pastes the URL into Revisions. On first use, Revisions clones the repository to the collaborator's machine. If a clone already exists, Revisions checks out the shared commit. If that clone has uncommitted work, Revisions asks whether to commit or discard it first [1, Q3; 15]. A repository already kept elsewhere on the computer can instead be linked by its folder, as `specs/git-workflow.md` describes [17]. Revisions finds the manuscript's entry file automatically, and the collaborator can choose another one [1, Q36].
 
 **Reading and editing.** The screen splits into a read-only PDF and an editable inline view, in the style of Overleaf. Clicking in either pane jumps to the matching location in the other through SyncTeX [1, Q37]. The inline view renders common LaTeX constructs as formatted text, and anything it does not recognize stays visible as editable raw source. Moving the cursor into a rendered construct reveals its source [1, Q9–Q10]. Edits autosave. The collaborator rebuilds the PDF with a button or a keyboard shortcut. An out-of-date warning appears while the PDF lags the source, and a failed build leaves the last good PDF in place [1, Q16].
 
@@ -585,3 +585,4 @@ Redraft's OpenIrisDPI trust profile, protected objects, and separate Source View
 - [14] GitHub OAuth App authorization, expiring access tokens and device-flow refresh: https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps#expiring-access-tokens; token expiry and revocation: https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/token-expiration-and-revocation.
 - [15] `notes/grill-git-workflow-01.md`. Git workflow interview, 2026-11-16 to 2026-11-17, and `specs/git-workflow.md`, which it produced.
 - [16] The owner's request of 2026-11-19 for a way to send feedback to GitHub from the UI, in general and when something breaks, and the owner's choice of a prefilled GitHub form over posting from Revisions.
+- [17] The owner's request of 2026-11-20 to open repositories kept and used outside the Revisions folder.

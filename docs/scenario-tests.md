@@ -212,6 +212,15 @@ Requirements from here on are in `specs/git-workflow.md`.
 | Existing clone | `internal/server/routes_auth_test.go: TestOpenExistingClone` |
 | Commit link after newer pushes | `web/e2e/git.spec.ts: "Commit link after newer pushes: the commit opens as a read-only snapshot, the header explains why and offers the way to edit, and a branch from it can be committed"` |
 
+## Link a folder on this computer
+
+| Scenario | Test |
+|---|---|
+| Link a folder | `internal/server/routes_link_test.go: TestLinkAFolder`; `web/e2e/start.spec.ts: "Link a folder: a copy kept elsewhere opens in the editor, and a folder that is not set up says so"` |
+| Folder with an SSH remote | `internal/server/routes_link_test.go: TestLinkedSSHRemoteUsesTheSignedInAccount`; `internal/host/github/github_test.go: TestParseRemote` |
+| Folder not set up correctly | `internal/server/routes_link_test.go: TestLinkRefusesAFolderNotSetUp`; `web/e2e/start.spec.ts: "Link a folder: a copy kept elsewhere opens in the editor, and a folder that is not set up says so"` |
+| Repository already on this computer | `internal/server/routes_link_test.go: TestLinkRefusesARepositoryAlreadyHere` |
+
 ## Uncommitted work before a move
 
 | Scenario | Test |

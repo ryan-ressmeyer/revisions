@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -47,7 +48,8 @@ type deviceFlow struct {
 	nextPoll time.Time // GitHub penalizes a poll before this
 }
 
-// registerAuth registers /api/auth/*, GET /api/repos, and POST /api/open.
+// registerAuth registers /api/auth/*, GET /api/repos, POST /api/open, and
+// POST /api/link.
 func (s *Server) registerAuth(mux *http.ServeMux) {
 	s.auth.host = github.New()
 	s.auth.tokens = settings.NewTokenStore(s.paths.ConfigDir)
@@ -60,6 +62,7 @@ func (s *Server) registerAuth(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/auth/device/cancel", s.cancelDevice)
 	mux.HandleFunc("GET /api/repos", s.listRepos)
 	mux.HandleFunc("POST /api/open", s.open)
+	mux.HandleFunc("POST /api/link", s.link)
 }
 
 var (
@@ -298,7 +301,7 @@ func (s *Server) hostUser(ctx context.Context, token string) (host.User, error) 
 // gitAuth is how Git authenticates to the host as the signed-in account.
 func (s *Server) gitAuth(token string) gitx.Auth {
 	base, header := s.auth.host.GitAuth(token)
-	return gitx.Auth{BaseURL: base, Header: header}
+	return gitx.Auth{BaseURL: base, Header: header, Aliases: s.auth.host.GitAliases()}
 }
 
 // hostFailed answers for a failed call to the host.
@@ -514,27 +517,97 @@ func (s *Server) signOut(w http.ResponseWriter, r *http.Request) {
 
 type repoSummary struct {
 	ID     string  `json:"id"`
+	Path   string  `json:"path"`
 	Branch *string `json:"branch"` // null on a detached HEAD
 	Head   string  `json:"head"`
 }
 
 func (s *Server) listRepos(w http.ResponseWriter, r *http.Request) {
-	repos := []repoSummary{}
-	// Clones live at <home>/<host>/<owner>/<name>.
+	// Clones live at <home>/<host>/<owner>/<name>, or in a folder linked to.
+	ids := map[string]bool{}
 	clones, _ := fs.Glob(os.DirFS(s.paths.Home), "*/*/*/.git")
 	for _, clone := range clones {
-		parts := strings.Split(clone, "/")
-		id, err := workspace.NewRepoID(parts[0], parts[1], parts[2])
-		if err != nil {
-			continue
-		}
-		st, err := gitx.GetStatus(r.Context(), s.paths.CloneDir(id))
-		if err != nil {
-			continue
-		}
-		repos = append(repos, repoSummary{id.String(), branchOrNull(st.Branch), st.Head})
+		ids[strings.TrimSuffix(clone, "/.git")] = true
 	}
+	for id := range s.paths.Links() {
+		ids[id] = true
+	}
+	repos := []repoSummary{}
+	for raw := range ids {
+		id, err := workspace.ParseRepoID(raw)
+		if err != nil {
+			continue
+		}
+		dir := s.paths.CloneDir(id)
+		st, err := gitx.GetStatus(r.Context(), dir)
+		if err != nil {
+			continue
+		}
+		repos = append(repos, repoSummary{id.String(), dir, branchOrNull(st.Branch), st.Head})
+	}
+	slices.SortFunc(repos, func(a, b repoSummary) int { return strings.Compare(a.ID, b.ID) })
 	writeJSON(w, http.StatusOK, repos)
+}
+
+// link implements "Link a folder on this computer" in specs/git-workflow.md.
+// It reads only the folder, so it needs neither sign-in nor GitHub.
+func (s *Server) link(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Path string `json:"path"`
+	}
+	if !readJSON(w, r, &body) {
+		return
+	}
+	path := strings.TrimSpace(body.Path)
+	if rest, ok := strings.CutPrefix(path, "~"); ok && (rest == "" || os.IsPathSeparator(rest[0])) {
+		if home, err := os.UserHomeDir(); err == nil {
+			path = home + rest
+		}
+	}
+	if !filepath.IsAbs(path) {
+		writeError(w, http.StatusBadRequest, "bad_request", "Give the full path of the folder, for example "+filepath.Join(string(filepath.Separator)+"Users", "you", "paper")+".")
+		return
+	}
+	notSetUp := func(why string) {
+		writeError(w, http.StatusUnprocessableEntity, "bad_repo", "This folder is not set up correctly for Revisions: "+why)
+	}
+	if info, err := os.Stat(path); err != nil || !info.IsDir() {
+		notSetUp("there is no folder at " + path + ".")
+		return
+	}
+	ctx := r.Context()
+	top, err := gitx.Run(ctx, path, "rev-parse", "--show-toplevel")
+	if errors.Is(err, gitx.ErrMissing) {
+		gitFailed(w, err)
+		return
+	}
+	dir, evalErr := filepath.EvalSymlinks(strings.TrimSpace(top))
+	if err != nil || evalErr != nil {
+		notSetUp("it is not a Git repository.")
+		return
+	}
+	origin, err := gitx.Run(ctx, dir, "config", "--get", "remote.origin.url")
+	if err != nil {
+		notSetUp("its repository has no origin remote. Revisions needs origin to be the repository on GitHub.")
+		return
+	}
+	repo, err := s.auth.host.ParseRemote(strings.TrimSpace(origin))
+	id, idErr := workspace.NewRepoID(s.auth.host.Name(), repo.Owner, repo.Name)
+	if err != nil || idErr != nil {
+		notSetUp("its origin remote is not a repository on GitHub.")
+		return
+	}
+
+	s.git.mu.Lock()
+	defer s.git.mu.Unlock()
+	switch err := s.paths.Link(id, dir); {
+	case errors.Is(err, workspace.ErrExists):
+		writeError(w, http.StatusConflict, "repo_exists", "This repository is already on this computer, in "+s.paths.CloneDir(id)+".")
+	case err != nil:
+		writeError(w, http.StatusInternalServerError, "internal", err.Error())
+	default:
+		writeJSON(w, http.StatusOK, map[string]string{"repo": id.String()})
+	}
 }
 
 func branchOrNull(branch string) *string {

@@ -128,9 +128,16 @@ type Host interface {
 	PullRequests(ctx context.Context, token string, repo Repo) ([]PullRequest, error)
 	CreatePullRequest(ctx context.Context, token string, repo Repo, pull NewPull) (PullRequest, error)
 
+	// ParseRemote reads a clone's origin URL. It returns ErrBadURL when the
+	// remote is not a repository on this host.
+	ParseRemote(raw string) (Repo, error)
+
 	CloneURL(repo Repo) string
 	// GitAuth returns the header Git must send to URLs under baseURL.
 	GitAuth(token string) (baseURL, header string)
+	// GitAliases are URL prefixes, such as the SSH form, that Git rewrites to
+	// baseURL so that the header reaches them too.
+	GitAliases() []string
 	// CommitEmail is the no-reply address for commits by user.
 	CommitEmail(user User) string
 }

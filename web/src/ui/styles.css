@@ -414,6 +414,20 @@ textarea:focus-visible {
 	padding: 0.6rem 1.4rem;
 }
 
+.link-intro {
+	margin: 1.25rem 0 0;
+}
+
+.link-form {
+	margin-top: 0.5rem;
+}
+
+.repo-path {
+	display: block;
+	font-size: 0.85em;
+	overflow-wrap: anywhere;
+}
+
 .opening {
 	min-height: 1.5em;
 	margin: 0.75rem 0 0;
