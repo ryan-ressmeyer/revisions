@@ -1,3 +1,5 @@
+<img src="docs/icon/icon.svg" alt="" width="96" height="96">
+
 # Revisions
 
 Revisions lets an author share a LaTeX manuscript held in a GitHub repository with a co-author who does not use Git or a TeX toolchain by choice. The co-author pastes a GitHub link, and Revisions clones the repository to their own machine and opens it in the browser as an editor beside the compiled PDF.

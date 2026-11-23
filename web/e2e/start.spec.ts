@@ -30,6 +30,23 @@ test.describe("signed out", () => {
 	});
 });
 
+test("Tab icon: the page names an SVG icon and a PNG fallback, and both load", async ({
+	page,
+}) => {
+	await page.goto("/");
+	const icons = await page
+		.locator('head link[rel="icon"]')
+		.evaluateAll((els) =>
+			els.map((e) => [e.getAttribute("href"), e.getAttribute("type")]),
+		);
+	expect(icons.map(([, type]) => type)).toEqual(["image/svg+xml", "image/png"]);
+	for (const [href, type] of icons) {
+		const res = await page.request.get(href ?? "");
+		expect(res.status(), href ?? "").toBe(200);
+		expect(res.headers()["content-type"]).toContain(type ?? "");
+	}
+});
+
 test("First open: a pasted link opens the entry file in the editor", async ({
 	page,
 }) => {
