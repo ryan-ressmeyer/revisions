@@ -39,6 +39,17 @@ func OnlyOn(ctx context.Context, dir, name, head string) ([]LogCommit, error) {
 	return log(ctx, dir, head, "--not", "--exclude="+name, "--branches", "--remotes", "--glob=refs/pull/*")
 }
 
+// NotOnRemote lists the commits reachable from HEAD or a local branch and
+// from no remote-tracking branch or pull-request reference: those that
+// deleting the clone would lose. head is "" before the first commit.
+func NotOnRemote(ctx context.Context, dir, head string) ([]LogCommit, error) {
+	revs := []string{"--branches", "--not", "--remotes", "--glob=refs/pull/*"}
+	if head != "" {
+		revs = append([]string{head}, revs...)
+	}
+	return log(ctx, dir, revs...)
+}
+
 // DeleteBranch deletes the local branch name only while it points at head,
 // then removes its tracking configuration (branch.<name>.*).
 func DeleteBranch(ctx context.Context, dir, name, head string) error {

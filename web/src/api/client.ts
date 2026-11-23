@@ -1,5 +1,7 @@
 // Typed client for the HTTP contract in specs/architecture.md.
 
+import type { Commit, FileStatus } from "./git";
+
 /** An error response from the server: `{error: {code, message, ...extra}}`. */
 export class ApiError extends Error {
 	constructor(
@@ -197,6 +199,10 @@ export interface RepoSummary {
 	id: RepoId;
 	/** The folder that holds the clone. */
 	path: string;
+	/** A folder linked from elsewhere, rather than a copy in the Revisions folder. */
+	linked: boolean;
+	/** `remote.origin.url` as Git stores it, or "". */
+	origin: string;
 	branch: string | null;
 	head: string;
 }
@@ -227,4 +233,34 @@ export function openUrl(url: string): Promise<Opened> {
  */
 export function linkFolder(path: string): Promise<{ repo: RepoId }> {
 	return json("POST", "/api/link", { path });
+}
+
+/** Opens the clone's folder in the file manager. Error: 500 `open_failed`. */
+export async function revealFolder(id: RepoId): Promise<void> {
+	await send("POST", `/api/repos/${id}/reveal`);
+}
+
+export interface RemovePreview {
+	path: string;
+	linked: boolean;
+	/** Uncommitted changes that removing would lose; empty when linked. */
+	files: FileStatus[];
+	/** Commits no GitHub branch holds; empty when linked. */
+	commits: Commit[];
+	/** Names exactly this preview; the removal is refused if it changed. */
+	fingerprint: string;
+}
+
+/** Error: 409 `not_removable` for a copy reached through a symbolic link. */
+export function previewRemove(id: RepoId): Promise<RemovePreview> {
+	return json("GET", `/api/repos/${id}/remove/preview`);
+}
+
+/** Unlinks a linked folder or deletes a copy in the Revisions folder.
+ * Errors as for {@link previewRemove}, and 409 `changed`. */
+export async function removeRepo(
+	id: RepoId,
+	fingerprint: string,
+): Promise<void> {
+	await send("POST", `/api/repos/${id}/remove`, { fingerprint });
 }

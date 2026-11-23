@@ -221,6 +221,16 @@ Requirements from here on are in `specs/git-workflow.md`.
 | Folder not set up correctly | `internal/server/routes_link_test.go: TestLinkRefusesAFolderNotSetUp`; `web/e2e/start.spec.ts: "Link a folder: a copy kept elsewhere opens in the editor, and a folder that is not set up says so"` |
 | Repository already on this computer | `internal/server/routes_link_test.go: TestLinkRefusesARepositoryAlreadyHere` |
 
+## Manage a repository from Home
+
+| Scenario | Test |
+|---|---|
+| Show in folder and copy path | `internal/server/routes_repos_test.go: TestShowInFolder`; `web/e2e/start.spec.ts: "Repository menu: copy path, properties, remove a copy with unsaved work, and unlink a folder"` |
+| Properties | `internal/server/routes_repos_test.go: TestUnlinkAFolder`; `web/e2e/start.spec.ts: "Repository menu: copy path, properties, remove a copy with unsaved work, and unlink a folder"` |
+| Remove a copy | `internal/server/routes_repos_test.go: TestRemoveACopy` |
+| Remove a copy with work not on GitHub | `internal/server/routes_repos_test.go: TestRemoveACopy`, `TestRemoveRefusesAFolderReachedThroughALink`; `web/e2e/start.spec.ts: "Repository menu: copy path, properties, remove a copy with unsaved work, and unlink a folder"` |
+| Unlink a folder | `internal/server/routes_repos_test.go: TestUnlinkAFolder`; `web/e2e/start.spec.ts: "Repository menu: copy path, properties, remove a copy with unsaved work, and unlink a folder"` |
+
 ## Uncommitted work before a move
 
 | Scenario | Test |

@@ -150,6 +150,18 @@ func (b *Builder) Cancel(id workspace.RepoID, fingerprint string) Status {
 	return b.Status(id, fingerprint)
 }
 
+// Forget cancels the running build, as Cancel does, and deletes the
+// repository's build output and last good PDF.
+func (b *Builder) Forget(id workspace.RepoID) error {
+	b.Cancel(id, "")
+	b.mu.Lock()
+	delete(b.jobs, id)
+	b.mu.Unlock()
+	b.good.Lock()
+	defer b.good.Unlock()
+	return os.RemoveAll(filepath.Dir(b.dir(id, "good")))
+}
+
 // CancelAll cancels every running build, as Cancel does, before Revisions
 // quits.
 func (b *Builder) CancelAll() {

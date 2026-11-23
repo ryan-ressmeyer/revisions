@@ -73,7 +73,7 @@ interface Problem {
 }
 
 /** The sentence, Git's details, and the files an error names. */
-function problemOf(error: unknown): Problem {
+export function problemOf(error: unknown): Problem {
 	const files =
 		error instanceof ApiError && Array.isArray(error.extra.files)
 			? (error.extra.files as (string | FileStatus)[]).map((f) =>
@@ -655,7 +655,7 @@ export const longDate = (iso: string) =>
 		timeStyle: "short",
 	});
 
-const Spinner = () => <span className="spinner" aria-hidden="true" />;
+export const Spinner = () => <span className="spinner" aria-hidden="true" />;
 
 function Arrow({ down = false }: { down?: boolean }) {
 	return (
@@ -687,7 +687,7 @@ const UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
 	["minute", 60],
 ];
 
-function When({ iso }: { iso: string }) {
+export function When({ iso }: { iso: string }) {
 	const seconds = (Date.parse(iso) - Date.now()) / 1000;
 	const unit = UNITS.find(([, n]) => Math.abs(seconds) >= n);
 	return (
@@ -697,7 +697,7 @@ function When({ iso }: { iso: string }) {
 	);
 }
 
-function ProblemBox({
+export function ProblemBox({
 	problem,
 	children,
 }: {

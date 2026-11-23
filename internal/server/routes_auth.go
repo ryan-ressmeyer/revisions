@@ -518,6 +518,8 @@ func (s *Server) signOut(w http.ResponseWriter, r *http.Request) {
 type repoSummary struct {
 	ID     string  `json:"id"`
 	Path   string  `json:"path"`
+	Linked bool    `json:"linked"`
+	Origin string  `json:"origin"` // as Git stores it; "" without one
 	Branch *string `json:"branch"` // null on a detached HEAD
 	Head   string  `json:"head"`
 }
@@ -529,7 +531,8 @@ func (s *Server) listRepos(w http.ResponseWriter, r *http.Request) {
 	for _, clone := range clones {
 		ids[strings.TrimSuffix(clone, "/.git")] = true
 	}
-	for id := range s.paths.Links() {
+	links := s.paths.Links()
+	for id := range links {
 		ids[id] = true
 	}
 	repos := []repoSummary{}
@@ -543,7 +546,9 @@ func (s *Server) listRepos(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			continue
 		}
-		repos = append(repos, repoSummary{id.String(), dir, branchOrNull(st.Branch), st.Head})
+		_, linked := links[raw]
+		origin, _ := gitx.Run(r.Context(), dir, "config", "--get", "remote.origin.url")
+		repos = append(repos, repoSummary{id.String(), dir, linked, strings.TrimSpace(origin), branchOrNull(st.Branch), st.Head})
 	}
 	slices.SortFunc(repos, func(a, b repoSummary) int { return strings.Compare(a.ID, b.ID) })
 	writeJSON(w, http.StatusOK, repos)

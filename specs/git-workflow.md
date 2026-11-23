@@ -141,6 +141,35 @@ Home SHALL accept the path of a folder that already holds a Git repository outsi
 - WHEN the user links a folder whose repository Revisions already holds in another folder
 - THEN Revisions refuses and names the folder that holds it
 
+### Requirement: Manage a repository from Home
+
+Each repository Home lists SHALL have a menu with Show in folder, Copy path, Properties, and either Remove, for a copy in the Revisions folder, or Unlink, for a linked folder. Show in folder SHALL open the repository's folder in the system file manager. Copy path SHALL put the folder's absolute path on the clipboard. Properties SHALL show the repository with a link to it on GitHub, whether it is a copy in the Revisions folder or a linked folder, the folder, the `origin` remote as Git stores it, the current branch or the snapshot on screen, the latest commit with its short id, subject, and date, the default branch, and how many files have uncommitted changes and how many commits on the current branch are not on GitHub. Remove and Unlink SHALL each say exactly what they will do and require one confirmation. Remove SHALL delete the copy's folder and SHALL list, before confirmation, every file with uncommitted changes and every commit on a local branch or HEAD that no GitHub branch or pull-request reference holds, because those are lost. Unlink SHALL only stop Revisions using the folder and SHALL leave the folder, its files, and its Git history as they are. Neither SHALL change GitHub. Revisions SHALL delete only a folder inside the Revisions folder, reached without symbolic links, and SHALL do nothing when what the confirmation showed has changed since. Both SHALL forget the repository's last PDF [7].
+
+#### Scenario: Show in folder and copy path
+
+- WHEN the user chooses Show in folder or Copy path in a repository's menu on Home
+- THEN the file manager opens on the repository's folder, or the folder's path is on the clipboard
+
+#### Scenario: Properties
+
+- WHEN the user chooses Properties in a repository's menu on Home
+- THEN Revisions shows the repository, its kind, folder, `origin`, branch, latest commit, default branch, and the work that is not on GitHub
+
+#### Scenario: Remove a copy
+
+- WHEN the user removes a copy in the Revisions folder that has no work missing from GitHub, and confirms
+- THEN the confirmation names the folder it deletes and says nothing on GitHub changes, and afterwards the folder is gone and Home no longer lists the repository
+
+#### Scenario: Remove a copy with work not on GitHub
+
+- WHEN the user removes a copy that has uncommitted changes or commits no GitHub branch holds
+- THEN the confirmation lists those files and commits as lost, and nothing is deleted if they change before the user confirms
+
+#### Scenario: Unlink a folder
+
+- WHEN the user unlinks a linked folder and confirms
+- THEN Home no longer lists the repository, and the folder, its files, and its Git history are unchanged
+
 ### Requirement: Uncommitted work before a move
 
 Before a move, Revisions SHALL save pending editor text and SHALL do nothing more if that fails, except that text refused on a snapshot SHALL NOT block a move from it and SHALL stay shown for copying without being saved anywhere. With uncommitted changes, it SHALL show one prompt that names the destination, lists the changed files, and offers Commit, Discard, and Cancel. It SHALL complete the move only after the chosen commit or confirmed discard succeeds. Commit SHALL require a description and SHALL NOT prefill one. Commit SHALL NOT be offered on a snapshot. During an unfinished merge, Revisions SHALL refuse the move without a prompt. When the commit or discard succeeds and the move fails, Revisions SHALL report both outcomes, stay where it is, and SHALL NOT retry on its own. Any uncommitted change SHALL block a move, including changes Git would carry across [1, Q2, Q7].
@@ -445,3 +474,4 @@ None.
 - [4] GitHub Docs, "Checking out pull requests locally": https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/reviewing-changes-in-pull-requests/checking-out-pull-requests-locally.
 - [5] `git-merge(1)`, Git 2.53.0.
 - [6] The owner's request of 2026-11-20 to open repositories kept and used outside the Revisions folder, with an error saying a repository is not set up correctly when it is not a Git repository or not linked to GitHub, and the owner's choice to reach SSH remotes over HTTPS with the signed-in account.
+- [7] The owner's request of 2026-11-22 for a menu on each repository on Home with Show in folder, Copy path, Properties, and Remove or Unlink, with a confirmation that says exactly what removing or unlinking will do.

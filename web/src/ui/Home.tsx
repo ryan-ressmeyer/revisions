@@ -8,6 +8,7 @@ import {
 } from "../api/client";
 import { explain, isCode } from "./errors";
 import { type Move, MovePrompt, runMove, Unclean } from "./Git";
+import { RepoMenu } from "./RepoMenu";
 import { repoHref } from "./route";
 
 // ponytail: the UI reads owner and name from the link itself to offer the
@@ -187,11 +188,16 @@ export function Home({
 									</a>
 									<span className="muted repo-path">{r.path}</span>
 								</span>
-								<span className="muted">
+								<span className="muted repo-branch">
 									{r.branch
 										? `branch ${r.branch}`
 										: `version ${r.head.slice(0, 7)}`}
 								</span>
+								<RepoMenu
+									repo={r}
+									onAuthLost={onSignedOut}
+									onRemoved={() => listRepos().then(setRepos, () => {})}
+								/>
 							</li>
 						))}
 					</ul>

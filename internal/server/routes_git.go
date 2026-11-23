@@ -37,6 +37,9 @@ type gitDeps struct {
 
 	permMu sync.Mutex
 	perms  map[workspace.RepoID]pushPermission
+
+	// reveal opens a folder in the file manager. Tests replace it.
+	reveal func(dir string) error
 }
 
 // pushPermission is a remembered answer to "may this token push here?".
@@ -54,9 +57,10 @@ const permissionTTL = 30 * time.Second
 // gitHandler is a route on one clone.
 type gitHandler func(w http.ResponseWriter, r *http.Request, id workspace.RepoID, dir string)
 
-// registerGit registers R/git/* and R/pulls.
+// registerGit registers R/git/*, R/pulls, R/reveal, and R/remove/*.
 func (s *Server) registerGit(mux *http.ServeMux) {
 	s.git.perms = map[workspace.RepoID]pushPermission{}
+	s.git.reveal = Open
 
 	const R = "/api/repos/{host}/{owner}/{name}"
 	// read routes leave the clone as it is; change routes take the lock.
@@ -92,6 +96,9 @@ func (s *Server) registerGit(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+R+"/git/branches/delete/preview", read(s.gitDeletePreview))
 	mux.HandleFunc("POST "+R+"/git/branches/delete", change(s.gitDeleteBranch))
 	mux.HandleFunc("POST "+R+"/pulls", change(s.createPull))
+	mux.HandleFunc("POST "+R+"/reveal", read(s.revealFolder))
+	mux.HandleFunc("GET "+R+"/remove/preview", read(s.removePreview))
+	mux.HandleFunc("POST "+R+"/remove", change(s.removeRepo))
 }
 
 // canPush reports whether the signed-in account may push to the repository.

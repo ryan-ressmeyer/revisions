@@ -114,6 +114,17 @@ func (p Paths) Link(id RepoID, dir string) error {
 	}
 	links := p.Links()
 	links[id.String()] = dir
+	return p.writeLinks(links)
+}
+
+// Unlink forgets the folder linked as the clone of id, leaving the folder.
+func (p Paths) Unlink(id RepoID) error {
+	links := p.Links()
+	delete(links, id.String())
+	return p.writeLinks(links)
+}
+
+func (p Paths) writeLinks(links map[string]string) error {
 	data, err := json.MarshalIndent(links, "", "  ")
 	if err != nil {
 		return err

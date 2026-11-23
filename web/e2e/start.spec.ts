@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -68,6 +68,73 @@ test("Link a folder: a copy kept elsewhere opens in the editor, and a folder tha
 	await page.getByRole("link", { name: "Revisions" }).click();
 	await expect(page.getByRole("link", { name: "ada/paper" })).toBeVisible();
 	await expect(page.getByText(own)).toBeVisible();
+});
+
+test("Repository menu: copy path, properties, remove a copy with unsaved work, and unlink a folder", async ({
+	page,
+	server,
+	fake,
+}) => {
+	await openPaper(page);
+	writeFileSync(join(server.paper, "main.tex"), "% unsaved note\n");
+	const own = join(mkdtempSync(join(tmpdir(), "revisions-own-")), "paper");
+
+	await page.getByRole("link", { name: "Revisions" }).click();
+	const menu = () =>
+		page.getByRole("button", { name: "Actions for ada/paper" }).click();
+
+	await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+	await menu();
+	await page.getByRole("menuitem", { name: "Copy path" }).click();
+	await expect(page.getByRole("menuitem", { name: "Copied" })).toBeVisible();
+	expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+		server.paper,
+	);
+
+	await page.getByRole("menuitem", { name: "Properties…" }).click();
+	const properties = page.getByRole("dialog", {
+		name: "Properties of ada/paper",
+	});
+	await expect(properties).toContainText("Copy in the Revisions folder");
+	await expect(properties).toContainText(server.paper);
+	await expect(properties).toContainText("main");
+	await expect(properties).toContainText("1 file with uncommitted changes");
+	await properties.getByRole("button", { name: "Close" }).click();
+
+	await menu();
+	await page.getByRole("menuitem", { name: "Remove…" }).click();
+	const remove = page.getByRole("dialog", {
+		name: "Remove ada/paper from this computer?",
+	});
+	await expect(remove).toContainText(server.paper);
+	await expect(
+		remove.getByRole("list", { name: "Uncommitted changes that will be lost" }),
+	).toContainText("main.tex");
+	await remove.getByRole("button", { name: "Delete folder" }).click();
+	await expect(
+		page.getByText("Manuscripts you open appear here."),
+	).toBeVisible();
+	expect(existsSync(server.paper)).toBe(false);
+
+	execFileSync("git", [
+		"clone",
+		"--quiet",
+		`${fake.webUrl}/ada/paper.git`,
+		own,
+	]);
+	await page.getByLabel("Folder on this computer").fill(own);
+	await page.getByRole("button", { name: "Link" }).click();
+	await expect(page.getByRole("textbox", { name: "Source" })).toBeVisible();
+	await page.getByRole("link", { name: "Revisions" }).click();
+	await menu();
+	await page.getByRole("menuitem", { name: "Unlink…" }).click();
+	const unlink = page.getByRole("dialog", { name: "Unlink ada/paper?" });
+	await expect(unlink).toContainText("stays as it is");
+	await unlink.getByRole("button", { name: "Unlink" }).click();
+	await expect(
+		page.getByText("Manuscripts you open appear here."),
+	).toBeVisible();
+	expect(existsSync(join(own, "main.tex"))).toBe(true);
 });
 
 test("Dirty clone: the move prompt for that clone shows, the copy as it is stays available, and Commit opens the link", async ({

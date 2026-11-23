@@ -9,8 +9,9 @@ import (
 )
 
 type repoBody struct {
-	ID, Path, Head string
-	Branch         *string
+	ID, Path, Head, Origin string
+	Branch                 *string
+	Linked                 bool
 }
 
 // cloneURL is how the fake GitHub's owner/name is spelled in a remote.
