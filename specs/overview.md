@@ -24,7 +24,7 @@ The old repository is read-only evidence of earlier choices. It is not a feature
 
 **Sending changes back.** A GitKraken-style commit graph shows local and remote history. Within the permissions of their own GitHub account, the collaborator can review diffs, commit, get the latest changes, send, create, switch, or delete branches, open a pull request, force-push, and discard changes [1, Q11–Q12, Q28; 15]. Force-push and discard each show what they will destroy and require one confirmation [1, Q29]. Any commit in the history can be viewed as a read-only snapshot, from which the collaborator goes back to their branch or starts a new one [9]. Revisions checks GitHub for co-authors' changes and offers to remove local branches that a merged pull request has finished. `specs/git-workflow.md` describes these journeys in full [15].
 
-**Installing.** The collaborator follows a written page for macOS, Linux, or Windows that installs Git and a TeX distribution and then pastes one command. The command downloads Revisions from the latest GitHub Release of the public repository, which is MIT licensed, and puts it where the platform's app launcher finds it [9]. If `latexmk` is missing, Revisions guides them to install MacTeX, MiKTeX, or TeX Live [1, Q21, Q34]. When a new version is released, Revisions says so on its own screens, and one button installs it and restarts Revisions in the same tab [12].
+**Installing.** The collaborator follows a written page for macOS, Linux, or Windows that installs Git and a TeX distribution and then pastes one command. The command downloads Revisions from the latest GitHub Release of the public repository, which is MIT licensed, and puts it where the platform's app launcher finds it [9]. If `latexmk` is missing, Revisions guides them to install MacTeX, MiKTeX, or TeX Live [1, Q21, Q34]. When a new version is released, Revisions says so on its own screens, and one button installs it and restarts Revisions in the same tab [12]. Check for updates in Settings looks at once [20].
 
 **Feedback.** A Feedback button in the top bar opens a filled-in GitHub issue form for a problem, an idea, or something confusing. A report of a problem carries the last unexpected failure Revisions showed, and a page that fails to draw offers to report itself [16].
 
@@ -411,7 +411,7 @@ Releases SHALL be published as GitHub Releases of `ryan-ressmeyer/revisions` [9]
 
 ### Requirement: Update from inside Revisions
 
-A build stamped with a release version SHALL ask GitHub for the latest release when it starts and at most four times a day after that. The request SHALL carry no GitHub token and nothing about the user or their manuscripts. A failed or offline check SHALL be silent and SHALL delay neither the start nor any request. A development build SHALL never offer an update. A release SHALL be offered only when its version is higher than the running one, compared number by number, so that 0.10.0 is newer than 0.9.0, and never when it is a pre-release. While one is offered, the home screen and the project SHALL show "Version X is available" with an Update button and a link to the release notes, and Settings SHALL show the running version and the same action. Nothing SHALL be installed until the user presses Update.
+A build stamped with a release version SHALL ask GitHub for the latest release when it starts and at most four times a day after that. The request SHALL carry no GitHub token and nothing about the user or their manuscripts. A failed or offline background check SHALL be silent and SHALL delay neither the start nor any request. Settings SHALL also have a Check for updates button beside the running version, which asks at once, so that a collaborator told of a release can find it without restarting. It SHALL show the release as any check does, or say that the running version is the latest, or say that it could not ask; a development build's SHALL say that it does not update [20]. A development build SHALL never offer an update. A release SHALL be offered only when its version is higher than the running one, compared number by number, so that 0.10.0 is newer than 0.9.0, and never when it is a pre-release. While one is offered, the home screen and the project SHALL show "Version X is available" with an Update button and a link to the release notes, and Settings SHALL show the running version and the same action. Nothing SHALL be installed until the user presses Update.
 
 Update SHALL first save pending edits as Quit does, and SHALL refuse and say why when they cannot be saved. Revisions SHALL then download the program for the computer from that release over HTTPS, check it against the release's SHA-256 checksums, put it in place of the running program, cancel any running build, and restart on the same port with the same folders and options. The open tab SHALL come back on the new version by itself, and no second tab SHALL open. On any failure the running version SHALL stay in place and keep working, and Revisions SHALL say plainly what happened and show the install command as the manual way to update. The update request SHALL pass the same loopback hardening as every other request [12].
 
@@ -434,6 +434,16 @@ Update SHALL first save pending edits as Quit does, and SHALL refuse and say why
 
 - WHEN the latest release is not higher than the running version, is a pre-release, or the running build is a development build
 - THEN Revisions offers no update
+
+#### Scenario: Check for updates
+
+- WHEN a newer release has been published since Revisions last asked and the user presses Check for updates in Settings
+- THEN Settings, the home screen, and the project show "Version X is available" with Update, without a restart
+
+#### Scenario: Nothing newer, or no answer
+
+- WHEN the user presses Check for updates and the running version is the latest, or GitHub cannot be reached
+- THEN Settings says that the running version is the latest, or that it could not ask, and any update already offered stays offered
 
 ### Requirement: Feedback
 
@@ -597,3 +607,4 @@ Redraft's OpenIrisDPI trust profile, protected objects, and separate Source View
 - [17] The owner's request of 2026-11-20 to open repositories kept and used outside the Revisions folder.
 - [18] The owner's request of 2026-11-22 for a menu on each repository on Home with Show in folder, Copy path, Properties, and Remove or Unlink.
 - [19] The owner's request of 2026-11-24 for a download button in the PDF toolbar, and the owner's choices of the browser's ordinary download over a forced save dialog and of the repository's name for the file.
+- [20] The owner's request of 2026-11-24 for a button beside the version in Settings that checks for a new version, so that collaborators told of a release can find it at once.

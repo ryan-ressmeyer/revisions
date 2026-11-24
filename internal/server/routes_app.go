@@ -35,6 +35,7 @@ func (s *Server) registerApp(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/quit", s.postQuit)
 	mux.HandleFunc("GET /api/update", s.getUpdate)
 	mux.HandleFunc("POST /api/update", s.postUpdate)
+	mux.HandleFunc("POST /api/update/check", s.postUpdateCheck)
 	// A dev build, or any build without a release version, never asks.
 	if update.Release(s.version) {
 		go s.checkForUpdates()
@@ -55,17 +56,40 @@ func (s *Server) Restart() string { return s.app.restart }
 func (s *Server) checkForUpdates() {
 	for {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-		if tag, err := update.Latest(ctx); err == nil {
-			if !update.Newer(s.version, tag) {
-				tag = ""
-			}
-			s.app.mu.Lock()
-			s.app.available = tag
-			s.app.mu.Unlock()
-		}
+		_ = s.checkUpdate(ctx)
 		cancel()
 		time.Sleep(6 * time.Hour)
 	}
+}
+
+// checkUpdate asks GitHub for the latest release and keeps it when it is
+// newer than this program. A failed check keeps the last answer.
+func (s *Server) checkUpdate(ctx context.Context) error {
+	tag, err := update.Latest(ctx)
+	if err != nil {
+		return err
+	}
+	if !update.Newer(s.version, tag) {
+		tag = ""
+	}
+	s.app.mu.Lock()
+	s.app.available = tag
+	s.app.mu.Unlock()
+	return nil
+}
+
+// postUpdateCheck asks GitHub at once, when the user presses Check for
+// updates, and answers as GET /api/update does.
+func (s *Server) postUpdateCheck(w http.ResponseWriter, r *http.Request) {
+	if !update.Release(s.version) {
+		writeError(w, http.StatusConflict, "dev_build", "This development build of Revisions does not update.")
+		return
+	}
+	if err := s.checkUpdate(r.Context()); err != nil {
+		writeError(w, http.StatusBadGateway, "check_failed", "Revisions could not ask GitHub for a newer version. Try again later. ("+err.Error()+")")
+		return
+	}
+	s.getUpdate(w, r)
 }
 
 func (s *Server) availableUpdate() string {

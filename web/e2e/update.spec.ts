@@ -26,6 +26,58 @@ function build(out: string, version: string) {
 	);
 }
 
+test("Check for updates: Settings asks at once, says when this is the latest, and offers a release published since", async ({
+	page,
+	fake,
+}) => {
+	test.setTimeout(120_000);
+	const dir = mkdtempSync(join(tmpdir(), "revisions-check-"));
+	const program = join(
+		dir,
+		`revisions${process.platform === "win32" ? ".exe" : ""}`,
+	);
+	build(program, "v0.0.1");
+	let latest = "v0.0.1";
+	const release = createServer((req, res) => {
+		if (req.url === "/latest") res.end(JSON.stringify({ tag_name: latest }));
+		else res.writeHead(404).end();
+	}).listen(0, "127.0.0.1");
+	await once(release, "listening");
+	const { port } = release.address() as AddressInfo;
+	const server = await startServer(
+		fake,
+		{ REVISIONS_RELEASES_URL: `http://127.0.0.1:${port}` },
+		program,
+	);
+	try {
+		await page.goto(server.url);
+		await page.getByRole("button", { name: "Settings" }).click();
+		const settings = page.getByRole("dialog");
+		await expect(settings).toContainText("Revisions 0.0.1");
+		const check = settings.getByRole("button", { name: "Check for updates" });
+		await check.click();
+		await expect(settings.getByRole("status")).toHaveText(
+			"You have the latest version.",
+		);
+
+		latest = "v0.0.2";
+		await check.click();
+		await expect(
+			settings.getByRole("region", { name: "Update available" }),
+		).toContainText("Version 0.0.2 is available.");
+		await expect(settings.getByRole("status")).toHaveCount(0);
+		await settings.getByRole("button", { name: "Cancel" }).click();
+		// Home shows it too, without waiting for its next look at the server.
+		await expect(
+			page.getByRole("region", { name: "Update available" }),
+		).toBeVisible();
+	} finally {
+		await server.stop();
+		release.close();
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
 test("Update: the notice offers the new version, and Update saves, installs it, and the tab comes back on it", async ({
 	page,
 	fake,

@@ -135,6 +135,11 @@ export function getUpdate(): Promise<UpdateInfo> {
 	return json("GET", "/api/update");
 }
 
+/** Asks GitHub at once. Errors: 409 `dev_build`, 502 `check_failed`. */
+export function checkForUpdate(): Promise<UpdateInfo> {
+	return json("POST", "/api/update/check");
+}
+
 /**
  * Installs the newer release; the server then restarts on it. Errors: 409
  * `no_update`, 409 `updating`, 409 `not_writable` and 502 `update_failed`,

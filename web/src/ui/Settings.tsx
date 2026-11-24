@@ -1,10 +1,12 @@
 import { type FormEvent, type ReactNode, useRef, useState } from "react";
 import {
 	type Auth,
+	checkForUpdate,
 	getSettings,
 	putSettings,
 	type Settings,
 	signOut,
+	type UpdateInfo,
 } from "../api/client";
 import { explain } from "./errors";
 import { shown } from "./Update";
@@ -48,6 +50,7 @@ export function SettingsButton({
 	onQuit,
 	version,
 	updateNotice,
+	onUpdateInfo,
 }: {
 	auth: Auth;
 	onSignedOut: () => void;
@@ -58,14 +61,22 @@ export function SettingsButton({
 	version: string;
 	/** The update notice, when a newer version is available. */
 	updateNotice: ReactNode;
+	/** What Check for updates found, for the notices everywhere. */
+	onUpdateInfo: (update: UpdateInfo) => void;
 }) {
 	const dialog = useRef<HTMLDialogElement>(null);
 	const [form, setForm] = useState<Settings | null>(null);
 	const [message, setMessage] = useState("");
 	const [appearance, setAppearance] = useState<Appearance>(savedAppearance);
+	const [checking, setChecking] = useState(false);
+	const [checked, setChecked] = useState<{
+		text: string;
+		failed: boolean;
+	} | null>(null);
 
 	const show = async () => {
 		setMessage("");
+		setChecked(null);
 		setAppearance(savedAppearance());
 		try {
 			const current = await getSettings();
@@ -116,12 +127,38 @@ export function SettingsButton({
 		}
 		setQuitting(false);
 	};
+
+	const check = async () => {
+		setChecked(null);
+		setChecking(true);
+		try {
+			const update = await checkForUpdate();
+			onUpdateInfo(update);
+			// A newer version shows as the update notice below.
+			if (!update.available)
+				setChecked({ text: "You have the latest version.", failed: false });
+		} catch (error) {
+			setChecked({ text: explain(error), failed: true });
+		}
+		setChecking(false);
+	};
 	const quitRow = (
 		<>
 			{version && (
 				<div className="account">
 					<span className="muted">Revisions {shown(version)}</span>
+					<button type="button" onClick={check} disabled={checking}>
+						Check for updates
+					</button>
 				</div>
+			)}
+			{checked && (
+				<p
+					role={checked.failed ? "alert" : "status"}
+					className={checked.failed ? "alert" : "muted"}
+				>
+					{checked.text}
+				</p>
 			)}
 			{updateNotice}
 			<div className="account">

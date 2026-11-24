@@ -225,6 +225,7 @@ export function App() {
 				onQuit={quitApp}
 				version={update?.version ?? ""}
 				updateNotice={notice}
+				onUpdateInfo={setUpdate}
 			/>
 		</>
 	);

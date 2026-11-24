@@ -171,6 +171,8 @@ Every Scenario in `specs/overview.md` and then `specs/git-workflow.md`, grouped 
 | Tampered update | `cmd/revisions/update_test.go: TestUpdateReplacesTheRunningProgram` (a bad checksum through the API); `internal/update/update_test.go: TestInstallRefusesABadChecksum`, `TestInstallRefusesAReleaseWithoutThisPlatform` |
 | Folder not writable | `internal/update/update_test.go: TestInstallSaysWhenTheFolderIsNotWritable` (skipped on Windows and as root) |
 | No downgrade or pre-release | `internal/update/update_test.go: TestNewer`; `internal/server/routes_app_test.go: TestADevBuildOffersNoUpdate` |
+| Check for updates | `internal/server/routes_app_test.go: TestCheckForUpdatesAsksAtOnce`; `web/e2e/update.spec.ts: "Check for updates: Settings asks at once, says when this is the latest, and offers a release published since"` |
+| Nothing newer, or no answer | `internal/server/routes_app_test.go: TestCheckForUpdatesAsksAtOnce`, `TestADevBuildOffersNoUpdate`; `web/e2e/update.spec.ts: "Check for updates: Settings asks at once, says when this is the latest, and offers a release published since"` |
 
 ## Feedback
 

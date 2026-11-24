@@ -1,12 +1,19 @@
 package server
 
 import (
+	"fmt"
+	"maps"
+	"net/http"
+	"net/http/httptest"
 	"os/exec"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/ryan-ressmeyer/revisions/internal/build"
+	"github.com/ryan-ressmeyer/revisions/internal/workspace"
 )
 
 type settingsBody struct {
@@ -162,4 +169,59 @@ func TestADevBuildOffersNoUpdate(t *testing.T) {
 		t.Fatalf("got %v", got)
 	}
 	wantError(t, api(t, s, "POST", "/api/update", nil), 409, "no_update")
+	wantError(t, api(t, s, "POST", "/api/update/check", nil), 409, "dev_build")
+}
+
+// Check for updates asks GitHub at once, so a release published since the
+// last check is offered without a restart, and says when it cannot ask.
+func TestCheckForUpdatesAsksAtOnce(t *testing.T) {
+	var latest atomic.Value
+	latest.Store("v0.0.2")
+	releases := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/latest" {
+			http.NotFound(w, r)
+			return
+		}
+		fmt.Fprintf(w, `{"tag_name": %q}`, latest.Load())
+	}))
+	t.Cleanup(releases.Close)
+	t.Setenv("REVISIONS_RELEASES_URL", releases.URL)
+	paths := workspace.Paths{Home: t.TempDir(), ConfigDir: t.TempDir(), CacheDir: t.TempDir()}
+	s := New(paths, "v0.0.1", 4747, testUI)
+	offered := func() map[string]string {
+		return decode[map[string]string](t, api(t, s, "GET", "/api/update", nil))
+	}
+	// The check at start runs once in the background; let it finish first.
+	deadline := time.Now().Add(10 * time.Second)
+	for offered()["available"] != "v0.0.2" {
+		if time.Now().After(deadline) {
+			t.Fatal("the check at start offered nothing")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	latest.Store("v0.0.1")
+	none := map[string]string{"version": "v0.0.1", "available": "", "notesUrl": ""}
+	if got := decode[map[string]string](t, api(t, s, "POST", "/api/update/check", nil)); !maps.Equal(got, none) {
+		t.Fatalf("check with the running version latest: got %v, want %v", got, none)
+	}
+
+	latest.Store("v0.0.3")
+	newer := map[string]string{
+		"version":   "v0.0.1",
+		"available": "v0.0.3",
+		"notesUrl":  "https://github.com/ryan-ressmeyer/revisions/releases/tag/v0.0.3",
+	}
+	if got := decode[map[string]string](t, api(t, s, "POST", "/api/update/check", nil)); !maps.Equal(got, newer) {
+		t.Fatalf("check after a release: got %v, want %v", got, newer)
+	}
+	if got := offered(); !maps.Equal(got, newer) {
+		t.Fatalf("GET /api/update after the check: got %v, want %v", got, newer)
+	}
+
+	releases.Close()
+	wantError(t, api(t, s, "POST", "/api/update/check", nil), 502, "check_failed")
+	if got := offered(); !maps.Equal(got, newer) {
+		t.Fatalf("a failed check changed the offer: got %v, want %v", got, newer)
+	}
 }
