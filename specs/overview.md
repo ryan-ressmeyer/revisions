@@ -18,7 +18,7 @@ The old repository is read-only evidence of earlier choices. It is not a feature
 
 **Opening.** The collaborator pastes the URL into Revisions. On first use, Revisions clones the repository to the collaborator's machine. If a clone already exists, Revisions checks out the shared commit. If that clone has uncommitted work, Revisions asks whether to commit or discard it first [1, Q3; 15]. A repository already kept elsewhere on the computer can instead be linked by its folder, as `specs/git-workflow.md` describes [17]. Each repository Home lists has a menu to show its folder, copy its path, see its properties, and remove or unlink it [18]. Revisions finds the manuscript's entry file automatically, and the collaborator can choose another one [1, Q36].
 
-**Reading and editing.** The screen splits into a read-only PDF and an editable inline view, in the style of Overleaf. Clicking in either pane jumps to the matching location in the other through SyncTeX [1, Q37]. The inline view renders common LaTeX constructs as formatted text, and anything it does not recognize stays visible as editable raw source. Moving the cursor into a rendered construct reveals its source [1, Q9–Q10]. Edits autosave. The collaborator rebuilds the PDF with a button or a keyboard shortcut. An out-of-date warning appears while the PDF lags the source, and a failed build leaves the last good PDF in place [1, Q16].
+**Reading and editing.** The screen splits into a read-only PDF and an editable inline view, in the style of Overleaf. Clicking in either pane jumps to the matching location in the other through SyncTeX [1, Q37]. The inline view renders common LaTeX constructs as formatted text, and anything it does not recognize stays visible as editable raw source. Moving the cursor into a rendered construct reveals its source [1, Q9–Q10]. Edits autosave. The collaborator rebuilds the PDF with a button or a keyboard shortcut. An out-of-date warning appears while the PDF lags the source, and a failed build leaves the last good PDF in place [1, Q16]. A button above the PDF saves it as a file [19].
 
 **Commenting and tracking changes.** The collaborator highlights text and attaches a comment. The comment lives in the LaTeX source as a `changes` macro, and a Resolve button removes it [1, Q6, Q30]. Tracked changes are off by default. When the collaborator turns them on for a session, edits are recorded as `changes` markup, and each tracked change has Accept and Reject buttons. Accept all and Reject all apply to every tracked change [1, Q8, Q38].
 
@@ -342,6 +342,15 @@ Revisions SHALL compile only when the user presses the build button or shortcut.
 - WHEN a build fails with `Float(s) lost` because a comment sits in a figure of a manuscript that loads `changes` without the inline-notes block, and the user takes the offered action
 - THEN Revisions adds the block after `\usepackage{changes}` in the main document, the build succeeds, and the added lines show as an uncommitted change
 
+### Requirement: Download the PDF
+
+While a PDF is shown, the PDF view's toolbar SHALL have a Download PDF button, drawn as an icon whose label and tooltip read "Download PDF". It SHALL save the PDF on screen, byte for byte, through the browser's ordinary download, named after the repository: `paper.pdf` for `github.com/ada/paper`. It SHALL do so when the PDF is out of date or a later build failed, and SHALL NOT build. Whether the browser asks where to save is the browser's setting [19].
+
+#### Scenario: Download the PDF on screen
+
+- WHEN a build has succeeded, a later build has failed, and the user presses Download PDF
+- THEN the browser saves `paper.pdf` with the bytes of the PDF on screen, and no build starts
+
 ### Requirement: Local build isolation
 
 Builds SHALL run `latexmk` on the user's machine with shell escape disabled, output written to a directory outside the repository, a timeout, and a cap on retained log size. The timeout SHALL be a user setting with a default of 300 s, because a slow machine with a large manuscript can need longer. The user SHALL be able to cancel a running build. The retained log SHALL be capped at 1 MiB. Builds SHALL ignore `latexmkrc` files, which are executable code [7].
@@ -587,3 +596,4 @@ Redraft's OpenIrisDPI trust profile, protected objects, and separate Source View
 - [16] The owner's request of 2026-11-19 for a way to send feedback to GitHub from the UI, in general and when something breaks, and the owner's choice of a prefilled GitHub form over posting from Revisions.
 - [17] The owner's request of 2026-11-20 to open repositories kept and used outside the Revisions folder.
 - [18] The owner's request of 2026-11-22 for a menu on each repository on Home with Show in folder, Copy path, Properties, and Remove or Unlink.
+- [19] The owner's request of 2026-11-24 for a download button in the PDF toolbar, and the owner's choices of the browser's ordinary download over a forced save dialog and of the repository's name for the file.

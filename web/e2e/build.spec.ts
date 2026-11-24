@@ -212,6 +212,31 @@ test.describe("with a built PDF", () => {
 		await page.keyboard.press("Escape");
 		await expect(dialog).toBeHidden();
 	});
+
+	test("Download the PDF on screen: saves it under the repository's name, byte for byte, without building", async () => {
+		const downloading = page.waitForEvent("download");
+		await page.getByRole("button", { name: "Download PDF" }).click();
+		const download = await downloading;
+		expect(download.suggestedFilename()).toBe("paper.pdf");
+
+		const served = await page.evaluate(async (path) => {
+			const token =
+				document.querySelector<HTMLMetaElement>('meta[name="revisions-token"]')
+					?.content ?? "";
+			const response = await fetch(path, {
+				headers: { "X-Revisions-Token": token },
+			});
+			return Array.from(new Uint8Array(await response.arrayBuffer()));
+		}, `/api/repos/${PAPER.id}/pdf`);
+		const saved = readFileSync(await download.path());
+		expect(saved.equals(Buffer.from(served))).toBe(true);
+
+		const state = await api<{ build: { state: string; pdfVersion: number } }>(
+			page,
+			`/api/repos/${PAPER.id}/state`,
+		);
+		expect(state.build).toMatchObject({ state: "failed", pdfVersion: 1 });
+	});
 });
 
 test("Comment where a margin note cannot go: the failure says why and opens the comment", async ({

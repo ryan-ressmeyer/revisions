@@ -129,6 +129,12 @@ Every Scenario in `specs/overview.md` and then `specs/git-workflow.md`, grouped 
 | Comment where a margin note cannot go | `web/src/core/changes/notes.test.ts: "a comment where a margin note cannot go is explained and named, with its file and line"`, `"Not in outer par mode is explained the same way"`, `"nothing to explain for other errors, or for a document without comments"`, `"comments only in ordinary text still get the explanation, with no names"`; `web/e2e/build.spec.ts: "Comment where a margin note cannot go: the failure says why and opens the comment"` |
 | Draw comments inline from a failed build | `web/src/core/changes/compile.test.ts: "without the block a comment in a figure stops the build with Float(s) lost, and adding the block fixes it"`; `web/e2e/build.spec.ts: "Comment where a margin note cannot go: one click adds the inline block to the preamble and the build succeeds"` |
 
+## Download the PDF
+
+| Scenario | Test |
+|---|---|
+| Download the PDF on screen | `web/e2e/build.spec.ts: "Download the PDF on screen: saves it under the repository's name, byte for byte, without building"` |
+
 ## Local build isolation
 
 | Scenario | Test |

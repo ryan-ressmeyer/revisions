@@ -27,6 +27,8 @@ GlobalWorkerOptions.workerSrc = workerUrl;
 export interface PdfHandle {
 	/** Scrolls to a SyncTeX box and flashes a highlight over it. */
 	show(box: PdfBox): void;
+	/** The bytes of the PDF on screen, or null while none is shown. */
+	bytes(): Promise<Uint8Array<ArrayBuffer> | null>;
 }
 
 interface Size {
@@ -138,6 +140,14 @@ export function PdfView({
 			show(box) {
 				pending.current = box;
 				setFlash((f) => ({ box, n: (f?.n ?? 0) + 1 }));
+			},
+			async bytes() {
+				const proxy = await shown.current?.promise;
+				// The bytes come from pdf.js's worker by postMessage, which
+				// always gives a plain ArrayBuffer.
+				return proxy
+					? (proxy.getData() as Promise<Uint8Array<ArrayBuffer>>)
+					: null;
 			},
 		}),
 		[],

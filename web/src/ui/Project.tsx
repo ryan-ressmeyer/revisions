@@ -646,6 +646,22 @@ export function ProjectView({
 			);
 		}
 	}, [id, setPanes]);
+	const downloadPdf = async () => {
+		try {
+			const bytes = await pdf.current?.bytes();
+			if (!bytes) return;
+			const a = document.createElement("a");
+			a.href = URL.createObjectURL(
+				new Blob([bytes], { type: "application/pdf" }),
+			);
+			a.download = `${id.slice(id.lastIndexOf("/") + 1)}.pdf`;
+			a.click();
+			// Safari reads the blob after click returns.
+			setTimeout(() => URL.revokeObjectURL(a.href), 60_000);
+		} catch (error) {
+			setNotice(explain(error));
+		}
+	};
 	const panesRef = useRef(panes);
 	panesRef.current = panes;
 
@@ -1213,6 +1229,23 @@ export function ProjectView({
 										</button>
 									)}
 									{showingPdf && <BuildLogButton id={id} />}
+									{showingPdf && (
+										<button
+											type="button"
+											className="quiet"
+											onClick={downloadPdf}
+											aria-label="Download PDF"
+											title="Download PDF"
+										>
+											<svg
+												className="icon"
+												viewBox="0 0 16 16"
+												aria-hidden="true"
+											>
+												<path d="M8 2.5v8M4.5 7 8 10.5 11.5 7M3 13.5h10" />
+											</svg>
+										</button>
+									)}
 									{showingPdf && (
 										<span className="row zoom">
 											<button
