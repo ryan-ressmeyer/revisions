@@ -26,7 +26,7 @@ The installers are `scripts/install.sh` (macOS and Linux) and `scripts/install.p
 
 ## Status
 
-Version 1 is in development. Pushing a `v*` tag builds and publishes a release (`.github/workflows/release.yml`); the latest is v0.3.0. Version 0.1.0 predates the Update button, so moving from it takes the install command once. Sign-in uses the Revisions OAuth App, whose client ID is in `internal/host/github/github.go`; no collaborator has signed in through it yet. Collaborators have tested the app on macOS and Windows. The installers are tested on Linux here and, in CI, on macOS and Windows, where CI also opens the installed app.
+Version 1 is in development. Pushing a `v*` tag builds and publishes a release (`.github/workflows/release.yml`); the latest is v0.3.0. Version 0.1.0 predates the Update button, so moving from it takes the install command once. Sign-in uses the Revisions OAuth App, whose client ID is in `internal/host/github/github.go`. Collaborators have signed in through it and tested the app on macOS and Windows. The installers are tested on Linux here and, in CI, on macOS and Windows, where CI also opens the installed app.
 
 ## Building from source
 
