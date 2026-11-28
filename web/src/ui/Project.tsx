@@ -64,6 +64,7 @@ import { FileTree } from "./FileTree";
 import { figureUrl } from "./figures";
 import { loadFile, openFileSync } from "./files";
 import {
+	CloudOff,
 	type GitHubCheck,
 	GitPanel,
 	longDate,
@@ -103,6 +104,11 @@ const mod = (platform: Platform) => (platform === "darwin" ? "⌘" : "Ctrl+");
 
 /** How often an open project checks GitHub for changes. */
 const CHECK_EVERY = 5 * 60_000;
+
+const commits = (n: number, what: string) =>
+	`${n} commit${n === 1 ? "" : "s"} ${what}`;
+const shortTime = (iso: string) =>
+	new Date(iso).toLocaleTimeString(undefined, { timeStyle: "short" });
 
 const LOCKED =
 	"This is an earlier version, so it cannot be changed. Go back to your branch, or start a branch from this version, to edit.";
@@ -760,13 +766,15 @@ export function ProjectView({
 		reached: null,
 		unreachable: false,
 	});
-	// Get latest and Send reach GitHub too, so they count as a check.
+	// Get latest and Send reach GitHub too, so they count as a check. Reaching
+	// it can change the commits waiting there, so the top bar reads them again.
 	useEffect(
 		() =>
-			onGitHubReached(() =>
-				setGithub({ reached: new Date().toISOString(), unreachable: false }),
-			),
-		[],
+			onGitHubReached(() => {
+				setGithub({ reached: new Date().toISOString(), unreachable: false });
+				poll();
+			}),
+		[poll],
 	);
 	const checkGitHub = useCallback(async () => {
 		if (!signedIn || gitRunning()) return;
@@ -798,7 +806,11 @@ export function ProjectView({
 	useEffect(() => {
 		checkGitHub();
 		const timer = setInterval(checkGitHub, CHECK_EVERY);
-		return () => clearInterval(timer);
+		window.addEventListener("focus", checkGitHub);
+		return () => {
+			clearInterval(timer);
+			window.removeEventListener("focus", checkGitHub);
+		};
 	}, [checkGitHub]);
 	useEffect(() => {
 		if (gitOpen) checkGitHub();
@@ -832,14 +844,30 @@ export function ProjectView({
 
 	const [, owner, name] = id.split("/");
 	const branch = repoState?.git.branch;
-	// Where the work stands on this computer; never depends on GitHub.
+	// Where the work stands: short in the chip, in words for its tooltip and
+	// the button's label. ↓ and the cloud come from GitHub, so not signed out.
 	const unsent = repoState?.git.unsent ?? 0;
-	const stands = [
-		repoState?.git.dirty ? "Not committed" : "",
-		unsent > 0 ? `${unsent} not sent` : "",
-	]
-		.filter(Boolean)
-		.join(" · ");
+	const behind = signedIn ? (repoState?.git.behind ?? 0) : 0;
+	const offline = signedIn && github.unreachable;
+	const short: string[] = [];
+	const words: string[] = [];
+	if (repoState?.git.dirty) {
+		short.push("Not committed");
+		words.push("Not committed");
+	}
+	if (unsent > 0) {
+		short.push(`↑${unsent}`);
+		words.push(commits(unsent, "not sent"));
+	}
+	if (behind > 0) {
+		short.push(`↓${behind}`);
+		words.push(commits(behind, "waiting on GitHub"));
+	}
+	if (offline)
+		words.push(
+			`GitHub could not be reached${github.reached ? ` since ${shortTime(github.reached)}` : ""}, so changes waiting there may not show`,
+		);
+	const stands = words.join(" · ");
 	const pdfVersion = Math.max(
 		build?.pdfVersion ?? 0,
 		polledBuild?.pdfVersion ?? 0,
@@ -965,7 +993,8 @@ export function ProjectView({
 					<span className="side end">
 						{stands && (
 							<span className="work-chip" aria-hidden="true" title={stands}>
-								{stands}
+								{short.join(" · ")}
+								{offline && <CloudOff />}
 							</span>
 						)}
 						<button

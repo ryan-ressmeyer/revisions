@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"context"
+	"strconv"
 	"strings"
 
 	"github.com/ryan-ressmeyer/revisions/internal/gitx"
@@ -23,10 +24,11 @@ type GitState struct {
 	Branch *string `json:"branch"` // nil on a detached HEAD
 	Dirty  bool    `json:"dirty"`  // any tracked change or untracked, non-ignored file
 	Unsent int     `json:"unsent"` // commits GitHub keeps nowhere; 0 on a detached HEAD
+	Behind int     `json:"behind"` // upstream commits the branch lacks, as of the last fetch
 }
 
 // GitStatus reads the head commit, the branch, whether the working tree has
-// uncommitted changes, and how many commits are unsent.
+// uncommitted changes, and how many commits are unsent or waiting on GitHub.
 func GitStatus(root string) (GitState, error) {
 	out, err := runGit(root, "status", "--porcelain=v2", "--branch", "-z")
 	if err != nil {
@@ -40,6 +42,10 @@ func GitStatus(root string) (GitState, error) {
 			if oid := strings.TrimPrefix(record, "# branch.oid "); oid != "(initial)" {
 				st.Head = oid
 			}
+		case strings.HasPrefix(record, "# branch.ab "):
+			// Present only while the upstream exists: "+<ahead> -<behind>".
+			_, behind, _ := strings.Cut(record, " -")
+			st.Behind, _ = strconv.Atoi(behind)
 		case strings.HasPrefix(record, "# branch.head "):
 			if name := strings.TrimPrefix(record, "# branch.head "); name != "(detached)" {
 				st.Branch = &name

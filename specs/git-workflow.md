@@ -16,7 +16,7 @@ Three gaps in the released workflow shape this spec:
 
 ## Guide-level explanation
 
-**Three levels of saved.** An edit is saved to disk a second after typing stops. A commit records it on this computer. Send puts the commits on GitHub, where co-authors see them. The top bar signals uncommitted changes and commits not yet sent, so a collaborator who closes the panel still sees that their revisions have not reached anyone.
+**Three levels of saved.** An edit is saved to disk a second after typing stops. A commit records it on this computer. Send puts the commits on GitHub, where co-authors see them. The top bar signals uncommitted changes and commits not yet sent, so a collaborator who closes the panel still sees that their revisions have not reached anyone. It also counts co-authors' commits waiting on GitHub, and marks when GitHub could not be reached [8, Q6–Q7].
 
 **Where to revise.** A collaborator may revise on the branch they were sent or start their own branch. Revisions sets no default [1, Q1].
 
@@ -24,7 +24,7 @@ Three gaps in the released workflow shape this spec:
 
 **Moving with unfinished work.** Viewing a version, switching branch, opening a link, and Get latest all need a clean working copy. When there are uncommitted changes, one prompt lists them and offers Commit, Discard, or Cancel. After a commit or a confirmed discard, Revisions completes the move [1, Q2, Q7].
 
-**Receiving changes.** Revisions checks GitHub when a project opens, when Changes & history opens, and every 5 minutes. The panel shows how many commits are waiting and whether GitHub could be reached. Get latest combines them with the collaborator's work. Where both changed the same lines, the collaborator edits out the conflict markers in the raw editor and commits, or undoes the merge [1, Q12, Q13].
+**Receiving changes.** Revisions checks GitHub when a project opens, when Changes & history opens, when the page regains focus, and every 5 minutes. The panel and the top bar show how many commits are waiting and whether GitHub could be reached. Get latest combines them with the collaborator's work. Where both changed the same lines, the collaborator edits out the conflict markers in the raw editor and commits, or undoes the merge [1, Q12, Q13].
 
 **Sharing.** Send pushes the current branch. Pull request… sends the branch if needed and opens the pull request in one step. A collaborator who revised directly on the shared branch can still package that work as a pull request: Revisions asks for a branch name, moves the unsent commits onto it, and returns the shared branch to match GitHub [1, Q11].
 
@@ -80,9 +80,9 @@ Two cases are not detected and stay with manual deletion: a merged pull request 
 
 ### Checking GitHub
 
-The page fetches when a project opens, when Changes & history opens, and every 5 minutes while a project is open. The interval is fixed. A check is skipped while another Git operation runs, and when signed out. A check only fetches: it never changes the working copy or the current branch.
+The page fetches when a project opens, when Changes & history opens, when the page regains focus, and every 5 minutes while a project is open. The interval is fixed. A check is skipped while another Git operation runs, and when signed out. A check only fetches: it never changes the working copy or the current branch.
 
-The panel shows the number of commits waiting on GitHub for the current branch and when GitHub was last reached, by a check, Get latest, or Send. When a check cannot reach GitHub, the panel says that GitHub could not be reached since that time, so the copy may be out of date. A rejected sign-in during a check shows the existing reconnect explanation. Neither failure blocks editing, committing, or building.
+The panel shows the number of commits waiting on GitHub for the current branch and when GitHub was last reached, by a check, Get latest, or Send. When a check cannot reach GitHub, the panel says that GitHub could not be reached since that time, so the copy may be out of date. The top bar's chip carries the same count as ↓ and the same failure as a crossed-out cloud, as Where the work stands describes. A rejected sign-in during a check shows the existing reconnect explanation. Neither failure blocks editing, committing, or building.
 
 A check is an ordinary authenticated request, so it renews an expiring credential the same way any request does. It is not a keepalive.
 
@@ -274,7 +274,7 @@ Get latest SHALL fetch and then merge the current branch's GitHub branch. It is 
 
 ### Requirement: Check GitHub for changes
 
-While signed in, Revisions SHALL fetch from GitHub when a project opens, when Changes & history opens, and every 5 minutes while a project is open, skipping a check while another Git operation runs. A check SHALL NOT change the working copy or the current branch. Changes & history SHALL show the number of commits waiting for the current branch and when GitHub was last reached. When a check cannot reach GitHub, the panel SHALL say so with the time of the last successful check. A failed check SHALL NOT block editing, committing, or building [1, Q12, Q13].
+While signed in, Revisions SHALL fetch from GitHub when a project opens, when Changes & history opens, when the page regains focus, and every 5 minutes while a project is open, skipping a check while another Git operation runs. A check SHALL NOT change the working copy or the current branch. Changes & history SHALL show the number of commits waiting for the current branch and when GitHub was last reached. When a check cannot reach GitHub, the panel SHALL say so with the time of the last successful check. A failed check SHALL NOT block editing, committing, or building [1, Q12, Q13].
 
 #### Scenario: Check on opening
 
@@ -286,6 +286,11 @@ While signed in, Revisions SHALL fetch from GitHub when a project opens, when Ch
 - WHEN a co-author pushes to the current branch while the project is open
 - THEN the waiting commits appear in Changes & history within 5 minutes
 
+#### Scenario: Check on returning to the page
+
+- WHEN a co-author pushes to the current branch while the collaborator is in another window, and the collaborator returns to Revisions
+- THEN the top bar counts the waiting commit without waiting for the 5-minute check
+
 #### Scenario: GitHub unreachable
 
 - WHEN a check cannot reach GitHub
@@ -293,7 +298,7 @@ While signed in, Revisions SHALL fetch from GitHub when a project opens, when Ch
 
 ### Requirement: Where the work stands
 
-With Changes & history closed, the top bar SHALL signal when there are uncommitted changes and when there are unsent commits. Neither signal SHALL depend on contacting GitHub. GitHub's side SHALL appear only inside Changes & history. The count on Send SHALL be the number of unsent commits [1, Q9, Q13]. The top bar SHALL have two rows at every width: where you are (the project, its branch or snapshot, and the main document) above what you do (the files, the panes in the middle of the bar, Changes & history, and the build). A chip beside Changes & history SHALL read "Not committed", "N not sent", or both joined by " · ", and SHALL never depend on GitHub [1, Q17].
+With Changes & history closed, the top bar SHALL signal uncommitted changes, unsent commits, commits waiting on GitHub, and a check that could not reach GitHub. The count on Send SHALL be the number of unsent commits [1, Q9]. The top bar SHALL have two rows at every width: where you are (the project, its branch or snapshot, and the main document) above what you do (the files, the panes in the middle of the bar, Changes & history, and the build) [1, Q17]. A chip beside Changes & history SHALL join with " · " the parts that apply: "Not committed" while there are uncommitted changes, "↑N" for N unsent commits, and "↓M" for M commits on the current branch's GitHub branch that the branch lacks, as of the last fetch. ↓ SHALL NOT appear on a snapshot, on a branch never sent, or on a branch removed from GitHub. While the last check could not reach GitHub, the chip SHALL end with a crossed-out cloud, shown even when no other part applies, until a check, Get latest, or Send reaches GitHub. Signed out, the chip SHALL show neither ↓ nor the cloud. The chip's tooltip and the accessible name of Changes & history SHALL say the same in words, including when GitHub was last reached [1, Q17; 8, Q6–Q7].
 
 #### Scenario: Uncommitted changes
 
@@ -304,6 +309,16 @@ With Changes & history closed, the top bar SHALL signal when there are uncommitt
 
 - WHEN the user commits on a branch that has never been sent
 - THEN the top bar signals unsent commits with their number, and the signal clears after Send
+
+#### Scenario: Commits waiting on GitHub
+
+- WHEN a co-author pushes to the current branch and Revisions next checks GitHub
+- THEN the top bar shows ↓1 without Changes & history being opened, and the signal clears after Get latest
+
+#### Scenario: GitHub unreachable on the top bar
+
+- WHEN a check cannot reach GitHub
+- THEN the chip shows a crossed-out cloud and says when GitHub was last reached, and the cloud clears once a check reaches GitHub
 
 ### Requirement: Send and open a pull request
 
@@ -450,7 +465,9 @@ Force-push SHALL list the remote commits it will erase and SHALL use `--force-wi
 
 **A fork path for collaborators without write access.** Deferred until needed. Sharing requires write access, which the author grants on GitHub [1, Q10].
 
-**GitHub's side on the top-bar button.** Rejected for lack of space; it stays inside the panel [1, Q13].
+**GitHub's side only inside the panel.** Chosen first, because the top bar has little room [1, Q13]. Reversed so that waiting commits show without opening the panel; arrows keep the chip as short as the words it replaced [8, Q6].
+
+**Dimming a count that may be out of date.** Rejected in favour of a crossed-out cloud, so that a failed check is shown rather than only implied [8, Q7].
 
 **A phrase on the Changes & history button, or a compact mark with a count.** The phrase replaced the button's label ("Changes not committed", then "2 commits not sent"); the mark kept the label and added a dot and an unsent count. Both were built and compared in the running app beside the chip, and rejected for the chip [1, Q17].
 
@@ -475,3 +492,4 @@ None.
 - [5] `git-merge(1)`, Git 2.53.0.
 - [6] The owner's request of 2026-11-20 to open repositories kept and used outside the Revisions folder, with an error saying a repository is not set up correctly when it is not a Git repository or not linked to GitHub, and the owner's choice to reach SSH remotes over HTTPS with the signed-in account.
 - [7] The owner's request of 2026-11-22 for a menu on each repository on Home with Show in folder, Copy path, Properties, and Remove or Unlink, with a confirmation that says exactly what removing or unlinking will do.
+- [8] `notes/grill-commit-review-01.md`. Interview on the commit review window and the top bar's ↑ and ↓, 2026-11-26 to 2026-11-27. Q numbers refer to its questions.

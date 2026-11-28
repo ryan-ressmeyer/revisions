@@ -264,3 +264,26 @@ func TestGitStatus(t *testing.T) {
 		t.Errorf("detached clone: %+v", st)
 	}
 }
+
+func TestGitStatusCountsCommitsWaitingOnGitHub(t *testing.T) {
+	_, root := newRepo(t, nil)
+	mine := gitIn(t, root, "rev-parse", "HEAD")
+	gitIn(t, root, "commit", "-q", "--allow-empty", "-m", "theirs")
+	gitIn(t, root, "commit", "-q", "--allow-empty", "-m", "theirs again")
+	theirs := gitIn(t, root, "rev-parse", "HEAD")
+	gitIn(t, root, "reset", "-q", "--hard", mine)
+
+	if st, _ := GitStatus(root); st.Behind != 0 {
+		t.Errorf("a branch never sent is %d behind", st.Behind)
+	}
+	gitIn(t, root, "remote", "add", "origin", "https://github.com/ada/paper.git")
+	gitIn(t, root, "update-ref", "refs/remotes/origin/main", theirs)
+	gitIn(t, root, "branch", "-q", "--set-upstream-to=origin/main")
+	if st, _ := GitStatus(root); st.Behind != 2 {
+		t.Errorf("two commits waiting on GitHub, got behind %d", st.Behind)
+	}
+	gitIn(t, root, "update-ref", "-d", "refs/remotes/origin/main")
+	if st, _ := GitStatus(root); st.Behind != 0 {
+		t.Errorf("a branch removed from GitHub is %d behind", st.Behind)
+	}
+}

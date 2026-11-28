@@ -52,6 +52,8 @@ export interface RepoState {
 		dirty: boolean;
 		/** Commits on the branch that GitHub keeps nowhere; 0 on a snapshot. */
 		unsent: number;
+		/** Commits on the branch's GitHub branch that it lacks, as of the last fetch. */
+		behind: number;
 	};
 }
 

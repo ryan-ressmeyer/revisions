@@ -146,7 +146,7 @@ test("Uncommitted changes: once an edit is saved, the top bar reads Not committe
 	);
 });
 
-test("Unsent commits: a commit on a branch never sent shows 1 not sent in the top bar and on Send, and the signal clears after Send", async ({
+test("Unsent commits: a commit on a branch never sent shows ↑1 in the top bar and on Send, and the signal clears after Send", async ({
 	page,
 	github,
 }) => {
@@ -163,9 +163,9 @@ test("Unsent commits: a commit on a branch never sent shows 1 not sent in the to
 	await expect(p.getByRole("status")).toContainText(
 		"Send it when you want your co-authors to see it.",
 	);
-	await expect(chip(page)).toHaveText("1 not sent");
+	await expect(chip(page)).toHaveText("↑1");
 	await expect(changesButton(page)).toHaveAccessibleName(
-		"Changes & history: 1 not sent",
+		"Changes & history: 1 commit not sent",
 	);
 	const send = p.getByRole("button", { name: "Send", exact: true });
 	await expect(send.locator(".count")).toHaveText("1");
@@ -178,6 +178,53 @@ test("Unsent commits: a commit on a branch never sent shows 1 not sent in the to
 	await expect(chip(page)).toHaveCount(0);
 	await expect(send.locator(".count")).toHaveCount(0);
 	await expect(changesButton(page)).toHaveAccessibleName("Changes & history");
+});
+
+test("Commits waiting on GitHub: a co-author's push shows ↓1 in the top bar without opening the panel, and it clears after Get latest", async ({
+	page,
+	github,
+}) => {
+	await page.clock.install();
+	await open(page);
+	await expect(chip(page)).toHaveCount(0);
+	const other = coauthor(github);
+	other.push("Retitle", TITLE, "\\title{Their New Title}");
+	other.remove();
+
+	await page.clock.fastForward("05:00");
+	await expect(chip(page)).toHaveText("↓1");
+	await expect(changesButton(page)).toHaveAccessibleName(
+		"Changes & history: 1 commit waiting on GitHub",
+	);
+
+	const p = await openPanel(page);
+	await p.getByRole("button", { name: /Get latest/ }).click();
+	await expect(p.getByRole("status")).toContainText("up to date");
+	await expect(chip(page)).toHaveCount(0);
+});
+
+test("GitHub unreachable on the top bar: a crossed-out cloud says when GitHub was last reached, and clears once a check reaches it", async ({
+	page,
+	github,
+}) => {
+	await page.clock.install();
+	await open(page);
+	await expect(chip(page)).toHaveCount(0);
+
+	renameSync(bare(github), `${bare(github)}.away`);
+	await page.clock.fastForward("05:00");
+	await expect(chip(page).locator(".offline")).toBeVisible();
+	await expect(chip(page)).toHaveAttribute(
+		"title",
+		/^GitHub could not be reached since \d/,
+	);
+	await expect(changesButton(page)).toHaveAccessibleName(
+		/^Changes & history: GitHub could not be reached since \d/,
+	);
+
+	renameSync(`${bare(github)}.away`, bare(github));
+	await page.clock.fastForward("05:00");
+	await expect(chip(page)).toHaveCount(0);
 });
 
 test("Commit: every change is in the commit, which becomes the newest in the graph, and the top bar signals an unsent commit", async ({
@@ -206,7 +253,7 @@ test("Commit: every change is in the commit, which becomes the newest in the gra
 			.split("\n")
 			.sort(),
 	).toEqual(["main.tex", "notes.txt"]);
-	await expect(chip(page)).toHaveText("1 not sent");
+	await expect(chip(page)).toHaveText("↑1");
 	await expect(
 		history(page).getByRole("listitem").first().getByText("main", {
 			exact: true,
@@ -700,6 +747,24 @@ test("Periodic check: a commit pushed while the project is open shows as waiting
 
 	await page.clock.fastForward("01:30");
 	await expect(p.getByText("1 commit waiting on GitHub")).toBeVisible();
+	expect(fetches.sent).toBe(before + 1);
+});
+
+test("Check on returning to the page: a co-author's push shows in the top bar as soon as the page regains focus", async ({
+	page,
+	github,
+}) => {
+	const fetches = countFetches(page);
+	await open(page);
+	// The check on opening the project finishes.
+	await page.waitForTimeout(1000);
+	const before = fetches.sent;
+	const other = coauthor(github);
+	other.push("Retitle", TITLE, "\\title{Their New Title}");
+	other.remove();
+
+	await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+	await expect(chip(page)).toHaveText("↓1");
 	expect(fetches.sent).toBe(before + 1);
 });
 

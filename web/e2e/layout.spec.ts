@@ -204,9 +204,7 @@ test("Top bar: two rows at every width, where you are above what you do, and the
 	git("commit", "--quiet", "--allow-empty", "-m", "One");
 	git("commit", "--quiet", "--allow-empty", "-m", "Two");
 	writeFileSync(join(server.paper, "notes.txt"), "Not committed.\n");
-	await expect(bar.locator(".work-chip")).toHaveText(
-		"Not committed · 2 not sent",
-	);
+	await expect(bar.locator(".work-chip")).toHaveText("Not committed · ↑2");
 	expect(await layout()).toBe(clean);
 	await page.setViewportSize({ width: 1280, height: 800 });
 	expect(await layout()).toBe(clean);

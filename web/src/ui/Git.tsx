@@ -670,10 +670,20 @@ function Arrow({ down = false }: { down?: boolean }) {
 	);
 }
 
+const CLOUD =
+	"M4.5 12.5h7a3 3 0 0 0 .3-6A4 4 0 0 0 4 7.2a2.7 2.7 0 0 0 .5 5.3z";
+
 /** Marks a branch that is on GitHub. */
 const Cloud = () => (
 	<svg className="icon" viewBox="0 0 16 16" aria-hidden="true">
-		<path d="M4.5 12.5h7a3 3 0 0 0 .3-6A4 4 0 0 0 4 7.2a2.7 2.7 0 0 0 .5 5.3z" />
+		<path d={CLOUD} />
+	</svg>
+);
+
+/** Marks that the last check could not reach GitHub. */
+export const CloudOff = () => (
+	<svg className="icon offline" viewBox="0 0 16 16" aria-hidden="true">
+		<path d={`${CLOUD}M2 2l12 12`} />
 	</svg>
 );
 

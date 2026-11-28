@@ -1606,12 +1606,19 @@ summary {
 }
 
 .work-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35rem;
 	padding: 0.1rem 0.5rem;
 	border-radius: 999px;
 	background: var(--surface-2);
 	color: var(--muted);
 	font-size: 0.8rem;
 	white-space: nowrap;
+}
+
+.work-chip .offline {
+	color: var(--warn);
 }
 
 .changes-toggle.on {
