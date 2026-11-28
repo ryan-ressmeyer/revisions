@@ -332,6 +332,15 @@ Requirements from here on are in `specs/git-workflow.md`.
 |---|---|
 | Commit | `web/e2e/git.spec.ts: "Commit: every change is in the commit, which becomes the newest in the graph, and the top bar signals an unsent commit"` |
 
+## Review changes before committing
+
+| Scenario | Test |
+|---|---|
+| Commit opens the review | `web/e2e/git.spec.ts: "Commit opens the review: Commit… shows the changed files, the diff, and the description, and committing from it commits every change and closes the window"` |
+| Jump to a changed line | `web/e2e/git.spec.ts: "Jump to a changed line: choosing a line in the review closes it and puts the cursor there, and Commit… brings the description back"` |
+| An earlier commit's changes | `web/e2e/git.spec.ts: "An earlier commit's changes: the larger window shows that commit's diff, read-only, with no description and no jump"` |
+| Nothing to commit | `web/e2e/git.spec.ts: "Nothing to commit: Commit… is disabled"` |
+
 ## Destructive-operation confirmation
 
 | Scenario | Test |

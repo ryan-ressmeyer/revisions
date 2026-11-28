@@ -112,6 +112,7 @@ export function GitPanel({
 	flush,
 	onChanged,
 	onOpenSource,
+	onOpenAt,
 	onAuthLost,
 	onClose,
 }: {
@@ -126,6 +127,8 @@ export function GitPanel({
 	onChanged: () => void;
 	/** Opens a file in the editor in Source mode. */
 	onOpenSource: (path: string) => void;
+	/** Opens a file in the editor with the cursor on a line. */
+	onOpenAt: (path: string, line: number) => void;
 	onAuthLost: () => void;
 	onClose: () => void;
 }) {
@@ -139,7 +142,13 @@ export function GitPanel({
 	const [done, setDone] = useState("");
 	const [dialog, setDialog] = useState<DialogName | null>(null);
 	const [unclean, setUnclean] = useState<Unclean | null>(null);
+	/** The review window: "" for the uncommitted changes, or a commit. */
+	const [review, setReview] = useState<string | null>(null);
+	const [message, setMessage] = useState("");
 	const heading = useRef<HTMLHeadingElement>(null);
+	useEffect(() => {
+		if (status?.merging) setMessage((m) => m || MERGE_MESSAGE);
+	}, [status?.merging]);
 
 	const refresh = useCallback(async () => {
 		try {
@@ -252,8 +261,18 @@ export function GitPanel({
 					? "Committed on this computer. Send it when you want your co-authors to see it."
 					: "Committed on this computer.",
 		);
-		if (ok) setSelected(null);
+		if (ok) {
+			setSelected(null);
+			setMessage("");
+			setReview(null);
+		}
 		return ok;
+	};
+	/** Leaves the review window for a line in the editor. The jump waits for
+	 * the window to close, which would otherwise take focus back. */
+	const openAt = (path: string, line: number) => {
+		setReview(null);
+		setTimeout(() => onOpenAt(path, line));
 	};
 	const createBranch = (name: string) =>
 		act(
@@ -380,6 +399,20 @@ export function GitPanel({
 							{status?.behind}
 						</span>
 					)}
+				</button>
+				<button
+					type="button"
+					onClick={() => setReview("")}
+					disabled={!status || !!busy || detached || !(dirty || status.merging)}
+					title={
+						detached
+							? "Create a branch first"
+							: dirty || status?.merging
+								? "Read your changes, then save a version of them on this computer (git commit)"
+								: "Nothing has changed since the last commit"
+					}
+				>
+					Commit…
 				</button>
 				{canPush && (
 					<button
@@ -525,15 +558,29 @@ export function GitPanel({
 					</p>
 				)}
 				<div className="git-detail">
+					{status && shown !== null && (
+						<button
+							type="button"
+							className="quiet pop-out"
+							onClick={() => setReview(shown)}
+							aria-label="Open in a larger window"
+							title="Open in a larger window"
+						>
+							<Enlarge />
+						</button>
+					)}
 					{status && shown === "" ? (
 						<ChangesView
 							id={id}
 							status={status}
 							filesKey={filesKey}
 							busy={!!busy}
+							message={message}
+							onMessage={setMessage}
 							onCommit={commit}
 							onCreateBranch={createBranch}
 							onDiscard={() => openDialog("discard")}
+							onLine={onOpenAt}
 						/>
 					) : shown ? (
 						<CommitView
@@ -548,6 +595,48 @@ export function GitPanel({
 				</div>
 			</div>
 
+			{review !== null && status && (
+				<Modal
+					title={
+						review === "" ? "Review your changes" : "Changes in this commit"
+					}
+					review
+					busy={busy === "commit"}
+					onClose={() => setReview(null)}
+				>
+					<button
+						type="button"
+						className="quiet modal-close"
+						onClick={() => setReview(null)}
+						disabled={busy === "commit"}
+						aria-label="Close"
+						title="Close"
+					>
+						✕
+					</button>
+					<div className="review-body">
+						{review === "" ? (
+							<ChangesView
+								id={id}
+								status={status}
+								filesKey={filesKey}
+								busy={!!busy}
+								message={message}
+								onMessage={setMessage}
+								onCommit={commit}
+								onCreateBranch={createBranch}
+								onDiscard={() => {
+									setReview(null);
+									openDialog("discard");
+								}}
+								onLine={openAt}
+							/>
+						) : (
+							<CommitView id={id} sha={review} busy={!!busy} />
+						)}
+					</div>
+				</Modal>
+			)}
 			{dialog === "branch" && status && log && (
 				<BranchDialog
 					id={id}
@@ -677,6 +766,13 @@ const CLOUD =
 const Cloud = () => (
 	<svg className="icon" viewBox="0 0 16 16" aria-hidden="true">
 		<path d={CLOUD} />
+	</svg>
+);
+
+/** Opens something in a larger window. */
+const Enlarge = () => (
+	<svg className="icon" viewBox="0 0 16 16" aria-hidden="true">
+		<path d="M9.5 2.5h4v4M13.5 2.5 9 7M6.5 13.5h-4v-4M2.5 13.5 7 9" />
 	</svg>
 );
 
@@ -978,21 +1074,27 @@ function ChangesView({
 	status,
 	filesKey,
 	busy,
+	message,
+	onMessage,
 	onCommit,
 	onCreateBranch,
 	onDiscard,
+	onLine,
 }: {
 	id: RepoId;
 	status: GitStatus;
 	/** Changes when any file changes, to reload the diff. */
 	filesKey: string;
 	busy: boolean;
+	/** The description, shared by the panel and the review window. */
+	message: string;
+	onMessage: (message: string) => void;
 	onCommit: (message: string) => Promise<boolean>;
 	onCreateBranch: (name: string) => Promise<boolean>;
 	onDiscard: () => void;
+	onLine: (path: string, line: number) => void;
 }) {
 	const [diff, setDiff] = useState<string | null>(null);
-	const [message, setMessage] = useState("");
 	const [branch, setBranch] = useState("");
 	const messageId = useId();
 	// biome-ignore lint/correctness/useExhaustiveDependencies: reload when files change
@@ -1006,15 +1108,12 @@ function ChangesView({
 			live = false;
 		};
 	}, [id, filesKey]);
-	useEffect(() => {
-		if (status.merging) setMessage((m) => m || MERGE_MESSAGE);
-	}, [status.merging]);
 
 	const detached = status.branch === null;
 	const files = status.files;
-	const submit = async (event: FormEvent) => {
+	const submit = (event: FormEvent) => {
 		event.preventDefault();
-		if (await onCommit(message)) setMessage("");
+		onCommit(message);
 	};
 	const create = async (event: FormEvent) => {
 		event.preventDefault();
@@ -1074,7 +1173,7 @@ function ChangesView({
 						rows={2}
 						required
 						value={message}
-						onChange={(e) => setMessage(e.target.value)}
+						onChange={(e) => onMessage(e.target.value)}
 						placeholder="For example: Tighten the abstract"
 						onKeyDown={(e) => {
 							if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
@@ -1120,7 +1219,9 @@ function ChangesView({
 					</div>
 				</form>
 			)}
-			{diff !== null && files.length > 0 && <DiffView diff={diff} />}
+			{diff !== null && files.length > 0 && (
+				<DiffView diff={diff} onLine={onLine} />
+			)}
 		</div>
 	);
 }
@@ -1195,12 +1296,15 @@ function CommitView({
 export function Modal({
 	title,
 	wide = false,
+	review = false,
 	busy = false,
 	onClose,
 	children,
 }: {
 	title: string;
 	wide?: boolean;
+	/** The larger window for reading changes. */
+	review?: boolean;
 	busy?: boolean;
 	onClose: () => void;
 	children: ReactNode;
@@ -1232,7 +1336,7 @@ export function Modal({
 		<dialog
 			ref={ref}
 			aria-labelledby={titleId}
-			className={wide ? "wide" : undefined}
+			className={review ? "review" : wide ? "wide" : undefined}
 			onCancel={(e) => {
 				e.preventDefault();
 				if (!busyRef.current) closeRef.current();

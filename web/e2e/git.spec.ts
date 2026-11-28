@@ -270,6 +270,79 @@ test("Commit: every change is in the commit, which becomes the newest in the gra
 	await expect(p.locator(".diff-add").first()).toBeVisible();
 });
 
+const review = (page: Page) =>
+	page.getByRole("dialog", { name: "Review your changes" });
+
+test("Commit opens the review: Commit… shows the changed files, the diff, and the description, and committing from it commits every change and closes the window", async ({
+	page,
+	server,
+}) => {
+	await open(page);
+	await typeAtStart(page, "% reviewed before committing\n");
+	const p = await openPanel(page);
+	await p.getByRole("button", { name: "Commit…" }).click();
+	const w = review(page);
+	await expect(w.getByRole("list", { name: "Changed files" })).toContainText(
+		"main.tex",
+	);
+	await expect(
+		w.locator(".diff-add").filter({ hasText: "% reviewed before committing" }),
+	).toBeVisible();
+
+	await w.getByLabel("Describe your changes").fill("Reviewed note");
+	await w.getByRole("button", { name: "Commit", exact: true }).click();
+	await expect(w).toHaveCount(0);
+	expect(git(server.paper, "log", "-1", "--format=%s")).toBe("Reviewed note");
+	expect(git(server.paper, "status", "--porcelain")).toBe("");
+	await expect(p.getByRole("status")).toContainText(
+		"Committed on this computer",
+	);
+});
+
+test("Jump to a changed line: choosing a line in the review closes it and puts the cursor there, and Commit… brings the description back", async ({
+	page,
+}) => {
+	await open(page);
+	await retitle(page, "A Reviewed Title");
+	const p = await openPanel(page);
+	await p.getByRole("button", { name: "Commit…" }).click();
+	const w = review(page);
+	await w.getByLabel("Describe your changes").fill("Retitle");
+
+	await w.locator(".diff-add").filter({ hasText: "A Reviewed Title" }).click();
+	await expect(w).toHaveCount(0);
+	await expect(editor(page)).toBeFocused();
+	await expect(page.locator(".cm-activeLine")).toContainText(
+		"A Reviewed Title",
+	);
+
+	await p.getByRole("button", { name: "Commit…" }).click();
+	await expect(review(page).getByLabel("Describe your changes")).toHaveValue(
+		"Retitle",
+	);
+});
+
+test("An earlier commit's changes: the larger window shows that commit's diff, read-only, with no description and no jump", async ({
+	page,
+}) => {
+	await open(page);
+	const p = await openPanel(page);
+	await history(page)
+		.getByRole("button", { name: /Initial manuscript/ })
+		.click();
+	await p.getByRole("button", { name: "Open in a larger window" }).click();
+	const w = page.getByRole("dialog", { name: "Changes in this commit" });
+	await expect(w.locator(".diff-file").first()).toBeVisible();
+	await expect(w.getByLabel("Describe your changes")).toHaveCount(0);
+	await expect(w.getByRole("button", { name: /^Line \d/ })).toHaveCount(0);
+});
+
+test("Nothing to commit: Commit… is disabled", async ({ page }) => {
+	await open(page);
+	const p = await openPanel(page);
+	await expect(p.getByRole("button", { name: "Commit…" })).toBeDisabled();
+});
+
 test("Send: a commit reaches GitHub and the branch shows as in sync", async ({
 	page,
 	github,

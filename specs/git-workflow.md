@@ -18,6 +18,8 @@ Three gaps in the released workflow shape this spec:
 
 **Three levels of saved.** An edit is saved to disk a second after typing stops. A commit records it on this computer. Send puts the commits on GitHub, where co-authors see them. The top bar signals uncommitted changes and commits not yet sent, so a collaborator who closes the panel still sees that their revisions have not reached anyone. It also counts co-authors' commits waiting on GitHub, and marks when GitHub could not be reached [8, Q6–Q7].
 
+**Reviewing before a commit.** Commit…, beside Get latest, opens a window of about tablet width with the changed files, their diff, and the description. Clicking a changed line closes it and puts the cursor on that line in the editor, to fix what the review found. The same window shows an earlier commit's changes, read-only [8, Q1–Q4].
+
 **Where to revise.** A collaborator may revise on the branch they were sent or start their own branch. Revisions sets no default [1, Q1].
 
 **Reading history.** Choosing View this version in the history shows the manuscript as it was at that commit. This snapshot is read-only. The header, which names the branch while on one, reads "Read-only: earlier version" instead. Clicking it explains why and offers two exits: Return to the branch most recently left, and Start a branch here [1, Q3, Q4, Q15].
@@ -424,6 +426,30 @@ Revisions SHALL offer viewing changes and diffs, commit, Get latest, Send, creat
 
 - WHEN the user enters a description and commits
 - THEN every change is in the commit and the top bar signals an unsent commit
+
+### Requirement: Review changes before committing
+
+Changes & history SHALL offer Commit… to the right of Get latest. It SHALL open a window of about tablet width and most of the screen's height that holds the changed files, their diff, the description, Commit, and Discard changes…. Commit… SHALL be disabled when nothing has changed, and on a snapshot, where its tooltip says to create a branch first. The description SHALL be the one in the commit form below the graph, prefilled during a merge as there, so it survives closing the window. After a commit the window SHALL close and the panel SHALL report as after any commit. The detail pane below the graph SHALL offer a button that opens the same window for the uncommitted changes, or, for an earlier commit, a window with that commit's diff, read-only. In a diff of uncommitted changes, choosing a line or a hunk's line heading SHALL close the window and put the editor's cursor on that line, showing the editor when it is hidden; a removed line leads to where it was. A diff of an earlier commit SHALL NOT offer that, because the file may have changed since [8, Q1–Q4].
+
+#### Scenario: Commit opens the review
+
+- WHEN the user has uncommitted changes and chooses Commit…
+- THEN a window shows the changed files, their diff, and the description, and committing from it commits every change and closes the window
+
+#### Scenario: Jump to a changed line
+
+- WHEN the user types a description in the window and then chooses a changed line in its diff
+- THEN the window closes, the editor shows that file with the cursor on that line, and Commit… opens the window again with the description kept
+
+#### Scenario: An earlier commit's changes
+
+- WHEN the user selects an earlier commit in the history and opens it in the larger window
+- THEN the window shows that commit's diff, read-only, with no description and no jump to the editor
+
+#### Scenario: Nothing to commit
+
+- WHEN nothing has changed since the last commit
+- THEN Commit… is disabled
 
 ### Requirement: Destructive-operation confirmation
 

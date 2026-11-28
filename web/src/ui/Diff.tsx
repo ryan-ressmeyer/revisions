@@ -22,20 +22,28 @@ function hunkLabel(hunk: DiffHunk): string {
 	return m ? `Line ${m[1]}` : hunk.header;
 }
 
-export function DiffView({ diff }: { diff: string }) {
+/** Goes to a line of the file as it is now. */
+type OnLine = (path: string, line: number) => void;
+
+/** With `onLine`, a line or a hunk's heading leads to that line in the editor. */
+export function DiffView({ diff, onLine }: { diff: string; onLine?: OnLine }) {
 	const files = useMemo(() => parseDiff(diff), [diff]);
 	if (files.length === 0) return <p className="muted">No changes to show.</p>;
 	return (
 		<div className="diff">
 			{files.map((file, i) => (
 				// biome-ignore lint/suspicious/noArrayIndexKey: the list is replaced whole
-				<DiffFileView key={i} file={file} />
+				<DiffFileView key={i} file={file} onLine={onLine} />
 			))}
 		</div>
 	);
 }
 
-function DiffFileView({ file }: { file: DiffFile }) {
+function DiffFileView({ file, onLine }: { file: DiffFile; onLine?: OnLine }) {
+	// A deleted file has no line to go to.
+	const path = file.newPath;
+	const jump =
+		onLine && path ? (line: number) => onLine(path, line) : undefined;
 	const name =
 		file.status === "renamed"
 			? `${file.oldPath} → ${file.newPath}`
@@ -82,37 +90,65 @@ function DiffFileView({ file }: { file: DiffFile }) {
 						: "No text changed."}
 				</p>
 			) : (
-				<table className="diff-table">
+				<table className={jump ? "diff-table jumps" : "diff-table"}>
 					<colgroup>
 						<col className="ln-col" />
 						<col className="ln-col" />
 						<col />
 					</colgroup>
 					<tbody>
-						{hunks.map(({ hunk, lines }, i) => (
-							// biome-ignore lint/suspicious/noArrayIndexKey: hunks never reorder
-							<Fragment key={i}>
-								<tr className="diff-hunk">
-									<td colSpan={3}>{hunkLabel(hunk)}</td>
-								</tr>
-								{lines.map((line, j) => (
-									// biome-ignore lint/suspicious/noArrayIndexKey: lines never reorder
-									<tr key={j} className={`diff-${line.kind}`}>
-										<td className="ln">{line.oldLine ?? ""}</td>
-										<td className="ln">{line.newLine ?? ""}</td>
-										<td className="code">
-											{line.kind === "add" ? (
-												<ins>{line.text}</ins>
-											) : line.kind === "delete" ? (
-												<del>{line.text}</del>
+						{hunks.map(({ hunk, lines }, i) => {
+							const start = Number(HUNK.exec(hunk.header)?.[1] ?? 1);
+							// A removed line leads to where it was: the line after the
+							// last one the new file still has.
+							let next = start;
+							return (
+								// biome-ignore lint/suspicious/noArrayIndexKey: hunks never reorder
+								<Fragment key={i}>
+									<tr className="diff-hunk">
+										<td colSpan={3}>
+											{jump ? (
+												<button
+													type="button"
+													className="link"
+													onClick={() => jump(start)}
+													title="Go to this line in the editor"
+												>
+													{hunkLabel(hunk)}
+												</button>
 											) : (
-												line.text
+												hunkLabel(hunk)
 											)}
 										</td>
 									</tr>
-								))}
-							</Fragment>
-						))}
+									{lines.map((line, j) => {
+										const at = line.newLine ?? next;
+										if (line.newLine) next = line.newLine + 1;
+										return (
+											<tr
+												// biome-ignore lint/suspicious/noArrayIndexKey: lines never reorder
+												key={j}
+												className={`diff-${line.kind}`}
+												onClick={jump && (() => jump(at))}
+												title={jump && "Go to this line in the editor"}
+											>
+												<td className="ln">{line.oldLine ?? ""}</td>
+												<td className="ln">{line.newLine ?? ""}</td>
+												<td className="code">
+													{line.kind === "add" ? (
+														<ins>{line.text}</ins>
+													) : line.kind === "delete" ? (
+														<del>{line.text}</del>
+													) : (
+														line.text
+													)}
+												</td>
+											</tr>
+										);
+									})}
+								</Fragment>
+							);
+						})}
 						{hidden > 0 && (
 							<tr className="diff-hunk">
 								<td colSpan={3}>{hidden} more lines are not shown here.</td>

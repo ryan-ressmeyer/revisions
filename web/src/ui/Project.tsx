@@ -1228,6 +1228,9 @@ export function ProjectView({
 									flush={flushMove}
 									onChanged={afterGit}
 									onOpenSource={openSource}
+									onOpenAt={(path, line) =>
+										openChosen(path, { line, column: 0 })
+									}
 									onAuthLost={onAuthLost}
 									onClose={() => {
 										setGitOpen(false);

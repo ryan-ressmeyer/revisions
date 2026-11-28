@@ -2198,6 +2198,44 @@ dialog.wide {
 	width: min(46rem, 94vw);
 }
 
+/* The review window: about tablet width, with the title fixed and the
+   changes scrolling beneath it. */
+dialog.review {
+	width: min(60rem, 94vw);
+	height: 90vh;
+	overflow: hidden;
+}
+
+dialog.review[open] {
+	display: flex;
+	flex-direction: column;
+}
+
+dialog.review .review-body {
+	flex: 1;
+	min-height: 0;
+	overflow: auto;
+}
+
+.modal-close {
+	position: absolute;
+	top: 1rem;
+	right: 1rem;
+}
+
+.git-detail .pop-out {
+	float: right;
+	margin-left: 0.5rem;
+}
+
+.diff-table.jumps tr:not(.diff-hunk) {
+	cursor: pointer;
+}
+
+.diff-table.jumps tr:not(.diff-hunk):hover .code {
+	text-decoration: underline dotted;
+}
+
 .dialog-section {
 	font-size: 0.95rem;
 	margin: 1.5rem 0 0.5rem;
