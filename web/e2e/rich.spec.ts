@@ -4,6 +4,7 @@ import type { Page } from "@playwright/test";
 import {
 	expect,
 	inlineNotes,
+	layoutBlock,
 	openFromTree,
 	openPaper,
 	type Server,
@@ -20,7 +21,7 @@ const original = readFileSync(
 const withPreamble = (text: string) =>
 	text.replace(
 		"\\begin{document}",
-		`\\usepackage{changes}\n${inlineNotes}\n\\definechangesauthor[name={Gale Harper}, color=blue]{GH}\n\\begin{document}`,
+		`\\usepackage{changes}\n${layoutBlock}\n${inlineNotes}\n\\definechangesauthor[name={Gale Harper}, color=blue]{GH}\n\\begin{document}`,
 	);
 
 const editor = (page: Page) => page.getByRole("textbox", { name: "Source" });

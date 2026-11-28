@@ -160,7 +160,7 @@ The inline view SHALL stay responsive on a manuscript of the size of a full jour
 
 ### Requirement: Comments as `changes` macros
 
-Revisions SHALL store each comment as a `\highlight[id=…, comment={…}]{text}` macro in the source. Each comment SHALL stand alone with no replies or threads. A Resolve button SHALL remove the macro and keep the highlighted text [1, Q30]. The user SHALL also be able to highlight text without a comment, stored as `\highlight[id=…]{text}`, under the same rules; a Remove button takes it away as Resolve does [8]. The `changes` package draws a comment as a margin note, which LaTeX cannot place inside a float, a box, a table cell, a footnote, a caption, or the boxed abstract of some journal templates. A comment SHALL stay a margin note in body text and SHALL be drawn inline, inside the text, only where a margin note cannot go. The switch SHALL live in the manuscript's preamble, so that the manuscript builds the same way outside Revisions: a block of whole lines, marked as added by Revisions, that Revisions writes once next to `\usepackage{changes}` and never duplicates. The block SHALL do nothing when the comments are not todonotes notes or LaTeX predates its hook system (2020-10). Comments SHALL be allowed in footnotes and captions [12].
+Revisions SHALL store each comment as a `\highlight[id=…, comment={…}]{text}` macro in the source. Each comment SHALL stand alone with no replies or threads. A Resolve button SHALL remove the macro and keep the highlighted text [1, Q30]. The user SHALL also be able to highlight text without a comment, stored as `\highlight[id=…]{text}`, under the same rules; a Remove button takes it away as Resolve does [8]. The `changes` package draws a comment as a margin note, which LaTeX cannot place inside a float, a box, a table cell, a footnote, a caption, or the boxed abstract of some journal templates. A comment SHALL stay a margin note in body text and SHALL be drawn inline, inside the text, only where a margin note cannot go. The switch SHALL live in the manuscript's preamble, so that the manuscript builds the same way outside Revisions: a block of whole lines, marked as added by Revisions, that Revisions writes once next to `\usepackage{changes}` and never duplicates. The block SHALL do nothing when the comments are not todonotes notes or LaTeX predates its hook system (2020-10). Comments SHALL be allowed in footnotes and captions [12]. A highlight SHALL wrap with its text, across lines and pages, and keep its coloured background, and SHALL never stop a build that would succeed without it, whatever citations, units or macros it holds. Margin notes SHALL be set in a column at least 2in wide: when a manuscript has margin notes and its right margin is too narrow for that column, every page SHALL be widened to the right to hold it, with the text, line breaks and page breaks where they would otherwise be. A manuscript with no margin notes, including one whose last comment was resolved and one built with the `final` option of `changes`, SHALL keep its paper size. These switches SHALL live in a second marked block that Revisions writes once beside the first, and SHALL apply only to the default highlight markup and to todonotes notes [21].
 
 #### Scenario: Add comment
 
@@ -177,6 +177,16 @@ Revisions SHALL store each comment as a `\highlight[id=…, comment={…}]{text}
 - WHEN the user adds a comment to text in a figure or table caption and builds the PDF
 - THEN the build succeeds, the comment is drawn inline in the caption, and a comment in body text after it is still a margin note
 
+#### Scenario: Long highlight
+
+- WHEN the user comments on text longer than a line and builds the PDF
+- THEN the highlight wraps with the text and nothing runs past the margin
+
+#### Scenario: Comment column
+
+- WHEN a manuscript whose right margin is narrower than 2in has a comment in body text and the user builds the PDF
+- THEN every page is wider than the paper, the note sits in a column at least 2in wide, and once the last comment is resolved the next build has the paper's width again
+
 #### Scenario: Highlight without a comment
 
 - WHEN the user selects text and presses Highlight
@@ -184,7 +194,7 @@ Revisions SHALL store each comment as a `\highlight[id=…, comment={…}]{text}
 
 ### Requirement: Author identity
 
-Revisions SHALL use the author ID from its settings for `changes` markup, suggesting a default from the GitHub account. It SHALL add a `\definechangesauthor` line to the preamble when the author is not yet defined. It SHALL add `\usepackage{changes}` to the preamble when the manuscript does not load the package [7], and the block that draws comments inline where a margin note cannot go when the preamble lacks it, including in a manuscript that already loads `changes` [12].
+Revisions SHALL use the author ID from its settings for `changes` markup, suggesting a default from the GitHub account. It SHALL add a `\definechangesauthor` line to the preamble when the author is not yet defined. It SHALL add `\usepackage{changes}` to the preamble when the manuscript does not load the package [7], and the block that draws comments inline where a margin note cannot go [12] and the block that lays comments out readably [21], each when the preamble lacks it, including in a manuscript that already loads `changes`.
 
 #### Scenario: New author
 
@@ -196,10 +206,10 @@ Revisions SHALL use the author ID from its settings for `changes` markup, sugges
 - WHEN a user adds a comment or tracked change to a manuscript that does not load `changes`
 - THEN Revisions adds `\usepackage{changes}` to the preamble
 
-#### Scenario: Package loaded without the block
+#### Scenario: Package loaded without the blocks
 
-- WHEN a user adds a comment to a manuscript that loads `changes`, with or without options, but has no inline-notes block
-- THEN Revisions adds the block on the line after that `\usepackage`, keeping every existing byte and the file's line endings, and adds nothing on later comments
+- WHEN a user adds a comment to a manuscript that loads `changes`, with or without options, but lacks the inline-notes block, the layout block, or both
+- THEN Revisions adds each missing block on the line after that `\usepackage`, keeping every existing byte and the file's line endings, and adds nothing on later comments
 
 ### Requirement: Tracked changes toggle
 
@@ -608,3 +618,4 @@ Redraft's OpenIrisDPI trust profile, protected objects, and separate Source View
 - [18] The owner's request of 2026-11-22 for a menu on each repository on Home with Show in folder, Copy path, Properties, and Remove or Unlink.
 - [19] The owner's request of 2026-11-24 for a download button in the PDF toolbar, and the owner's choices of the browser's ordinary download over a forced save dialog and of the repository's name for the file.
 - [20] The owner's request of 2026-11-24 for a button beside the version in Settings that checks for a new version, so that collaborators told of a release can find it at once.
+- [21] The owner's report of 2026-11-27 of a collaborator's feedback on a manuscript with 0.75in margins: comments filled the narrow margin one word per line and ran off the page, and long highlights ran past the margin on a single line. The owner chose a wider page with a column for notes over inline notes, and chose tikzmark's position-based highlighting after word-by-word highlighting with ulem was found to stop builds on common citation and siunitx commands.

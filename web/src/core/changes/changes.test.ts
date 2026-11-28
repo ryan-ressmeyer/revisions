@@ -195,7 +195,25 @@ test("resolving a standalone \\comment removes it entirely", () => {
 	expect(applyEdits(text, resolveComment(change))).toBe("Before  after.");
 });
 
-// The block ensurePreamble writes, as lines.
+// The blocks ensurePreamble writes, as lines: the layout block, then the
+// inline-notes block.
+const layout = [
+	"% Added by Revisions: draw highlights that wrap, and widen the page to give margin notes a column.",
+	"\\edef\\RevisionsHighlight{\\csname Changes@optionhighlightmarkup\\endcsname}\\def\\RevisionsBackground{background}",
+	"\\IfFileExists{tikzmarklibraryhighlighting.code.tex}{\\let\\RevisionsTikzmark\\relax}{}",
+	"\\ifx\\RevisionsHighlight\\RevisionsBackground\\ifdefined\\sethighlightmarkup\\ifdefined\\AddToHook\\ifdefined\\RevisionsTikzmark",
+	"\\usepackage{tikz}\\usetikzlibrary{tikzmark}\\usetikzmarklibrary{highlighting}\\newcount\\RevisionsHighlights",
+	"\\tikzset{revisions highlight/.style 2 args={highlighter/initial height=#1,highlighter/final height=#1,highlighter/initial depth=#2,highlighter/final depth=#2,highlighter/initial offset=1pt,highlighter/final offset=1pt,highlighter/left margin=1pt,highlighter/right margin=1pt,rounded corners=1pt}}",
+	"\\sethighlightmarkup{\\leavevmode\\global\\advance\\RevisionsHighlights1 \\xglobal\\colorlet{RevisionsHighlight\\the\\RevisionsHighlights}{authorcolor!30}\\edef\\RevisionsStart{\\noexpand\\StartHighlighting[fill=RevisionsHighlight\\the\\RevisionsHighlights,revisions highlight={\\the\\dimexpr.7\\baselineskip}{\\the\\dimexpr.3\\baselineskip}]}\\RevisionsStart#1\\StopHighlighting}",
+	"\\fi\\fi\\fi\\fi",
+	"\\ifdefined\\setuptodonotes\\ifdefined\\AddToHook",
+	"\\setuptodonotes{size=\\footnotesize}",
+	"\\AddToHook{cmd/@todonotes@drawMarginNoteWithLine/before}{\\ifdefined\\RevisionsNoteSeen\\else\\global\\let\\RevisionsNoteSeen\\relax\\immediate\\write\\csname @auxout\\endcsname{\\string\\global\\string\\let\\string\\RevisionsMarginNotes\\string\\relax}\\fi}% tells the next run",
+	"\\AtBeginDocument{\\ifdefined\\RevisionsMarginNotes\\ifdim\\marginparwidth<2in \\setlength\\marginparwidth{2in}\\fi",
+	"\\dimen0=\\dimexpr1.25in+\\hoffset+\\oddsidemargin+\\textwidth+\\marginparsep+\\marginparwidth\\relax",
+	"\\ifdim\\paperwidth<\\dimen0 \\paperwidth=\\dimen0 \\fi\\ifdefined\\pdfpagewidth\\pdfpagewidth=\\paperwidth\\fi\\ifdefined\\pagewidth\\pagewidth=\\paperwidth\\fi\\fi}",
+	"\\fi\\fi",
+];
 const inline = [
 	"% Added by Revisions: draw comments inline where LaTeX cannot place a margin note.",
 	"\\ifdefined\\setuptodonotes\\ifdefined\\AddToHook",
@@ -205,9 +223,11 @@ const inline = [
 	"\\AddToHook{env/frontmatter/begin}{\\setuptodonotes{inline}}% elsarticle title block",
 	"\\fi\\fi",
 ];
-const block = (eol = "\n") => inline.map((l) => l + eol).join("");
+const lines = (ls: string[], eol: string) => ls.map((l) => l + eol).join("");
+const inlineBlock = (eol = "\n") => lines(inline, eol);
+const block = (eol = "\n") => lines([...layout, ...inline], eol);
 
-test("Package not loaded: \\usepackage{changes}, the inline-notes block and the author go just before \\begin{document}", () => {
+test("Package not loaded: \\usepackage{changes}, the two blocks and the author go just before \\begin{document}", () => {
 	const text = fixture("main.tex");
 	const at = text.indexOf("\\begin{document}");
 	const out = applyEdits(
@@ -243,7 +263,7 @@ test("New author: a preamble that loads changes gets only the author, in the nex
 	);
 });
 
-test("a preamble that loads changes with options but has no block gets it on the next line, once", () => {
+test("a preamble that loads changes with options but has no blocks gets them on the next line, once", () => {
 	const text = [
 		"\\documentclass{elsarticle}",
 		"\\usepackage[markup=underlined, commentmarkup=todo]{xcolor,changes} % review",
@@ -258,8 +278,31 @@ test("a preamble that loads changes with options but has no block gets it on the
 	expect(out).toBe(text.replace("% review\n", `% review\n${block()}`));
 	expect(ensurePreamble(out, author)).toEqual([]);
 	expect(ensureInlineNotes(out)).toEqual([]);
-	// The repair adds only the block.
-	expect(applyEdits(text, ensureInlineNotes(text))).toBe(out);
+	// The repair adds only the inline-notes block.
+	expect(applyEdits(text, ensureInlineNotes(text))).toBe(
+		text.replace("% review\n", `% review\n${inlineBlock()}`),
+	);
+});
+
+test("a preamble with only the inline-notes block gets the layout block on the line after \\usepackage{changes}, once", () => {
+	const text = [
+		"\\documentclass{article}",
+		"\\usepackage{changes}",
+		inlineBlock().trimEnd(),
+		"\\definechangesauthor[name={Gale Harper}, color=blue]{GH}",
+		"\\begin{document}",
+		"x",
+		"\\end{document}",
+	].join("\n");
+	const author = { id: "GH", name: "Gale Harper" };
+	const out = applyEdits(text, ensurePreamble(text, author));
+	expect(out).toBe(
+		text.replace(
+			"\\usepackage{changes}\n",
+			`\\usepackage{changes}\n${lines(layout, "\n")}`,
+		),
+	);
+	expect(ensurePreamble(out, author)).toEqual([]);
 });
 
 test("the block keeps CRLF line endings and every existing byte", () => {
@@ -286,7 +329,7 @@ test("a \\usepackage{changes} on the \\begin{document} line gets the block on li
 	const text =
 		"\\documentclass{article}\\usepackage{changes}\\begin{document}x\\end{document}";
 	expect(applyEdits(text, ensureInlineNotes(text))).toBe(
-		`\\documentclass{article}\\usepackage{changes}\n${block()}\\begin{document}x\\end{document}`,
+		`\\documentclass{article}\\usepackage{changes}\n${inlineBlock()}\\begin{document}x\\end{document}`,
 	);
 	expect(ensureInlineNotes("no document here")).toEqual([]);
 });

@@ -228,6 +228,48 @@ const inlineNotes = [
 	"\\fi\\fi",
 ];
 
+/**
+ * The preamble block that lays comments out readably. changes draws a
+ * highlight as `\colorbox`, which cannot break, so a highlight longer than
+ * the room left on its line runs off the page. For the default
+ * `highlightmarkup=background` the block instead typesets the text as it is,
+ * between two tikzmark positions, and tikzmark's highlighting library draws
+ * the band behind it on the next run, across line and page breaks. Nothing
+ * reads the text word by word, so citations, units and macros inside it
+ * cannot break the build, as they do with ulem. Each band's colour is fixed
+ * when it is made, because the band is drawn at shipout. Without that
+ * library (older TeX) or LaTeX's hooks (2020-10) highlights stay `\colorbox`.
+ * A todonotes margin note gets the margin's width, which is often under an
+ * inch; the block sets notes in `\footnotesize`, and once a run has drawn a
+ * margin note (it writes a line to the .aux for the next run) it gives notes
+ * a 2in column and widens the page to the right to fit it, for pdfTeX, XeTeX
+ * and LuaTeX. Text, line and page breaks keep their places. With no margin
+ * notes, as after the last is resolved or with `final`, the page keeps its
+ * paper size. The first line marks it, so it is written once.
+ * ponytail: one-sided layout assumed. The page is sized from \oddsidemargin
+ * and widened on the right, so in two-sided or two-column layouts notes in
+ * the left margin stay narrow, and a band's middle lines span the text width,
+ * past a minipage or column. Add \evensidemargin, force notes right, and use
+ * the column's edges if such manuscripts need it.
+ */
+const layoutBlock = [
+	"% Added by Revisions: draw highlights that wrap, and widen the page to give margin notes a column.",
+	"\\edef\\RevisionsHighlight{\\csname Changes@optionhighlightmarkup\\endcsname}\\def\\RevisionsBackground{background}",
+	"\\IfFileExists{tikzmarklibraryhighlighting.code.tex}{\\let\\RevisionsTikzmark\\relax}{}",
+	"\\ifx\\RevisionsHighlight\\RevisionsBackground\\ifdefined\\sethighlightmarkup\\ifdefined\\AddToHook\\ifdefined\\RevisionsTikzmark",
+	"\\usepackage{tikz}\\usetikzlibrary{tikzmark}\\usetikzmarklibrary{highlighting}\\newcount\\RevisionsHighlights",
+	"\\tikzset{revisions highlight/.style 2 args={highlighter/initial height=#1,highlighter/final height=#1,highlighter/initial depth=#2,highlighter/final depth=#2,highlighter/initial offset=1pt,highlighter/final offset=1pt,highlighter/left margin=1pt,highlighter/right margin=1pt,rounded corners=1pt}}",
+	"\\sethighlightmarkup{\\leavevmode\\global\\advance\\RevisionsHighlights1 \\xglobal\\colorlet{RevisionsHighlight\\the\\RevisionsHighlights}{authorcolor!30}\\edef\\RevisionsStart{\\noexpand\\StartHighlighting[fill=RevisionsHighlight\\the\\RevisionsHighlights,revisions highlight={\\the\\dimexpr.7\\baselineskip}{\\the\\dimexpr.3\\baselineskip}]}\\RevisionsStart#1\\StopHighlighting}",
+	"\\fi\\fi\\fi\\fi",
+	"\\ifdefined\\setuptodonotes\\ifdefined\\AddToHook",
+	"\\setuptodonotes{size=\\footnotesize}",
+	"\\AddToHook{cmd/@todonotes@drawMarginNoteWithLine/before}{\\ifdefined\\RevisionsNoteSeen\\else\\global\\let\\RevisionsNoteSeen\\relax\\immediate\\write\\csname @auxout\\endcsname{\\string\\global\\string\\let\\string\\RevisionsMarginNotes\\string\\relax}\\fi}% tells the next run",
+	"\\AtBeginDocument{\\ifdefined\\RevisionsMarginNotes\\ifdim\\marginparwidth<2in \\setlength\\marginparwidth{2in}\\fi",
+	"\\dimen0=\\dimexpr1.25in+\\hoffset+\\oddsidemargin+\\textwidth+\\marginparsep+\\marginparwidth\\relax",
+	"\\ifdim\\paperwidth<\\dimen0 \\paperwidth=\\dimen0 \\fi\\ifdefined\\pdfpagewidth\\pdfpagewidth=\\paperwidth\\fi\\ifdefined\\pagewidth\\pagewidth=\\paperwidth\\fi\\fi}",
+	"\\fi\\fi",
+];
+
 interface Preamble {
 	/** Where `\begin{document}` starts. */
 	body: number;
@@ -235,6 +277,8 @@ interface Preamble {
 	changes?: number;
 	/** Whether the preamble holds the {@link inlineNotes} block. */
 	inline: boolean;
+	/** Whether the preamble holds the {@link layoutBlock}. */
+	layout: boolean;
 	/** How many `\definechangesauthor` lines there are. */
 	authors: number;
 	ids: Set<string>;
@@ -247,6 +291,7 @@ function readPreamble(text: string): Preamble | undefined {
 	const p: Preamble = {
 		body,
 		inline: text.slice(0, body).includes(inlineNotes[0] ?? ""),
+		layout: text.slice(0, body).includes(layoutBlock[0] ?? ""),
 		authors: 0,
 		ids: new Set(),
 	};
@@ -283,14 +328,15 @@ function insertLines(text: string, at: number, lines: string[]): Edit {
 
 /**
  * Edits to the entry file's text so that `author` can write changes markup
- * and comments compile everywhere: `\usepackage{changes}` when no
- * uncommented `\usepackage[…]{…}` loads the package; the block that draws
- * comments inline where a margin note cannot go (see
- * {@link ensureInlineNotes}) when it is missing; and
- * `\definechangesauthor[name={…}, color=…]{<id>}` when that ID is not
- * declared yet. The package, the block and the author go on their own lines
- * immediately before `\begin{document}`, in that order, except that the
- * block goes on the line after a `\usepackage` that already loads changes.
+ * and comments compile everywhere and read well: `\usepackage{changes}` when
+ * no uncommented `\usepackage[…]{…}` loads the package; the
+ * {@link layoutBlock} and the block that draws comments inline where a
+ * margin note cannot go (see {@link ensureInlineNotes}), each when it is
+ * missing; and `\definechangesauthor[name={…}, color=…]{<id>}` when that ID
+ * is not declared yet. The package, the blocks and the author go on their
+ * own lines immediately before `\begin{document}`, in that order, except
+ * that the blocks go on the line after a `\usepackage` that already loads
+ * changes.
  * The colour is the next one in a fixed palette of xcolor names, by how many
  * authors the preamble already declares. No edits when nothing is missing or
  * the text has no `\begin{document}`.
@@ -308,11 +354,14 @@ export function ensurePreamble(
 	if (!p) return [];
 	const edits: Edit[] = [];
 	const lines: string[] = [];
+	const blocks = [
+		...(p.layout ? [] : layoutBlock),
+		...(p.inline ? [] : inlineNotes),
+	];
 	if (p.changes === undefined) {
-		lines.push("\\usepackage{changes}");
-		if (!p.inline) lines.push(...inlineNotes);
-	} else if (!p.inline) {
-		edits.push(insertLines(entryText, p.changes, inlineNotes));
+		lines.push("\\usepackage{changes}", ...blocks);
+	} else if (blocks.length > 0) {
+		edits.push(insertLines(entryText, p.changes, blocks));
 	}
 	if (!p.ids.has(author.id)) {
 		const color = palette[p.authors % palette.length];

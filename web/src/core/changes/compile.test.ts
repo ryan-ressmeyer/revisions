@@ -164,16 +164,20 @@ function readLog(path: string): string {
 const engines = ["pdflatex", "xelatex", "lualatex"].filter(
 	(e) => spawnSync(e, ["--version"]).status === 0,
 );
-const hasClass = (cls: string) =>
-	spawnSync("kpsewhich", [`${cls}.cls`], { encoding: "utf8" }).stdout.trim() !==
-	"";
+const hasFile = (name: string) =>
+	spawnSync("kpsewhich", [name], { encoding: "utf8" }).stdout.trim() !== "";
+const hasClass = (cls: string) => hasFile(`${cls}.cls`);
+const hasPackage = (pkg: string) => hasFile(`${pkg}.sty`);
 
 // Test-only hooks on todonotes' two ways of drawing a note print each
 // comment's text to the log, so a test can tell an inline note from a margin
-// note. They rely on internal names of todonotes and changes.
+// note. They rely on internal names of todonotes and changes. At the end, the
+// PDF page width (LuaTeX's \pagewidth, or \pdfpagewidth) and the note width.
 const probes = String.raw`\makeatletter
 \AddToHook{cmd/@todonotes@drawInlineNote/before}{\typeout{PROBE inline: \Changes@highlight@comment}}
 \AddToHook{cmd/@todonotes@drawMarginNoteWithLine/before}{\typeout{PROBE margin: \Changes@highlight@comment}}
+\AtEndDocument{\typeout{PROBE page \the\ifdefined\pagewidth\pagewidth\else\pdfpagewidth\fi\space notes \the\marginparwidth}}
+\AddToHook{cmd/hl@draw/before}{\typeout{PROBE highlight drawn on page \thepage}}
 \makeatother
 `;
 
@@ -182,28 +186,44 @@ interface Built {
 	log: string;
 	/** How each comment was drawn, by its text: "inline", "margin" or both. */
 	notes: Map<string, Set<string>>;
+	/** Width of the PDF page and of margin notes, in TeX points. */
+	page: number;
+	noteWidth: number;
+	/** The page of each highlight band tikzmark drew, in order. */
+	highlightPages: number[];
 }
 
-function build(engine: string, text: string): Built {
-	const dir = mkdtempSync(join(tmpdir(), "revisions-notes-"));
+const letterWidth = 614.295; // 8.5in in TeX points
+
+/** Runs `engine` `passes` times in `dir`; the log is the last pass's. */
+function build(
+	engine: string,
+	text: string,
+	dir = mkdtempSync(join(tmpdir(), "revisions-notes-")),
+	passes = 1,
+): Built {
 	writeFileSync(
 		join(dir, "main.tex"),
 		text.replace("\\begin{document}", `${probes}\\begin{document}`),
 	);
-	const run = spawnSync(
-		engine,
-		[
-			"-interaction=nonstopmode",
-			"-halt-on-error",
-			"-no-shell-escape",
-			"main.tex",
-		],
-		{
-			cwd: dir,
-			encoding: "utf8",
-			env: { ...process.env, max_print_line: "10000" },
-		},
-	);
+	let status: number | null = null;
+	for (let i = 0; i < passes; i++) {
+		status = spawnSync(
+			engine,
+			[
+				"-interaction=nonstopmode",
+				"-halt-on-error",
+				"-no-shell-escape",
+				"main.tex",
+			],
+			{
+				cwd: dir,
+				encoding: "utf8",
+				env: { ...process.env, max_print_line: "10000" },
+			},
+		).status;
+		if (status !== 0) break;
+	}
 	let log = "";
 	try {
 		log = readFileSync(join(dir, "main.log"), "utf8");
@@ -215,7 +235,17 @@ function build(engine: string, text: string): Built {
 		const key = comment?.trim() ?? "";
 		notes.set(key, (notes.get(key) ?? new Set()).add(how ?? ""));
 	}
-	return { status: run.status, log, notes };
+	const size = log.match(/^PROBE page ([\d.]+)pt notes ([\d.]+)pt$/m);
+	return {
+		status,
+		log,
+		notes,
+		page: Number(size?.[1] ?? Number.NaN),
+		noteWidth: Number(size?.[2] ?? Number.NaN),
+		highlightPages: [
+			...log.matchAll(/^PROBE highlight drawn on page (\d+)$/gm),
+		].map((m) => Number(m[1])),
+	};
 }
 
 const gale = { id: "GH", name: "Gale Harper" };
@@ -376,6 +406,65 @@ describe.each(engines)("with %s", (engine) => {
 		},
 		120_000,
 	);
+
+	test("a highlight wraps with its text, across a page break, whatever citations and units it holds", () => {
+		// Commands that break highlighters which split text into words.
+		const units = hasPackage("siunitx");
+		const long = `a commented passage citing \\citep[see also][p.~3]{k} and \\cite{a,b}${units ? ", lasting \\SI{3}{\\milli\\second}" : ""}, ${"and running on ".repeat(500)}to its end`;
+		const doc = new Doc(
+			[
+				"\\documentclass{article}",
+				"\\usepackage[margin=0.75in]{geometry}",
+				"\\usepackage{natbib}",
+				...(units ? ["\\usepackage{siunitx}"] : []),
+				"\\usepackage{hyperref}",
+				"\\begin{document}",
+				`Before ${long}.`,
+				"\\end{document}",
+				"",
+			].join("\n"),
+		);
+		doc.apply(ensurePreamble(doc.text, gale));
+		doc.comment(long, "GH", "long");
+		const built = build(engine, doc.text, undefined, 2);
+		expect(built.status, `${doc.text}\n${built.log}`).toBe(0);
+		expect(built.log).toMatch(/\(2 pages/);
+		expect(built.log).not.toMatch(/Overfull \\hbox/);
+		expect(built.highlightPages).toEqual([1, 2]);
+		expect(built.notes.get("long")).toEqual(new Set(["margin"]));
+	}, 120_000);
+
+	test("a margin note widens the page to give notes a 2in column, and resolving the last one brings back the paper width", () => {
+		const doc = new Doc(
+			[
+				"\\documentclass{article}",
+				"\\usepackage[margin=0.75in]{geometry}",
+				"\\begin{document}",
+				"Some body text.",
+				"\\newpage",
+				"A second page.",
+				"\\end{document}",
+				"",
+			].join("\n"),
+		);
+		doc.apply(ensurePreamble(doc.text, gale));
+		doc.comment("body text", "GH", "body");
+		const dir = mkdtempSync(join(tmpdir(), "revisions-column-"));
+		const wide = build(engine, doc.text, dir, 2);
+		expect(wide.status, wide.log).toBe(0);
+		expect(wide.noteWidth).toBeGreaterThanOrEqual(144.54); // 2in
+		expect(wide.page).toBeGreaterThan(letterWidth);
+		expect(wide.log).not.toMatch(/Overfull \\hbox/);
+
+		const resolved = doc.text.replace(
+			"\\highlight[id=GH, comment={body}]{body text}",
+			"body text",
+		);
+		expect(resolved).not.toContain("\\highlight");
+		const plain = build(engine, resolved, dir, 2);
+		expect(plain.status, plain.log).toBe(0);
+		expect(plain.page).toBe(letterWidth);
+	}, 120_000);
 });
 
 const owner = [
@@ -405,34 +494,36 @@ test.skipIf(!engines.includes("pdflatex"))(
 );
 
 test.skipIf(!engines.includes("pdflatex"))(
-	"the block does nothing without todonotes or the hook system, and breaks nothing",
+	"the blocks do nothing without todonotes or the hook system, or in final mode, and break nothing",
 	() => {
-		// A figure and an abstract with no comment run the block's hooks.
+		// A figure and an abstract with no comment run the blocks' hooks; the
+		// body comment would widen the page if margin notes were drawn.
 		const body = owner.replace(
 			/\\begin\{figure\}.*\n/,
 			"\\begin{abstract}An abstract.\\end{abstract}\n\\begin{figure}A figure.\\end{figure}\n",
 		);
-		const withBlock = applyEdits(body, ensureInlineNotes(body));
+		const withBlocks = applyEdits(body, ensurePreamble(body, gale));
+		const lastFi = withBlocks.lastIndexOf("\\fi\\fi\n") + "\\fi\\fi\n".length;
 		const variants = {
-			"commentmarkup=margin": withBlock.replace(
+			"commentmarkup=margin": withBlocks.replace(
 				"\\usepackage{changes}",
 				"\\usepackage[commentmarkup=margin]{changes}",
 			),
-			final: withBlock.replace(
+			final: withBlocks.replace(
 				"\\usepackage{changes}",
 				"\\usepackage[final]{changes}",
 			),
-			// Hides \AddToHook from the block only; the test's probes need it.
-			"LaTeX before 2020-10": withBlock
-				.replace(
+			// Hides \AddToHook from the blocks only; the test's probes need it.
+			"LaTeX before 2020-10":
+				`${withBlocks.slice(0, lastFi)}\\let\\AddToHook\\HiddenAddToHook\n${withBlocks.slice(lastFi)}`.replace(
 					"% Added by Revisions",
 					"\\let\\HiddenAddToHook\\AddToHook\\let\\AddToHook\\undefined\n% Added by Revisions",
-				)
-				.replace("\\fi\\fi\n", "\\fi\\fi\n\\let\\AddToHook\\HiddenAddToHook\n"),
+				),
 		};
 		for (const [label, text] of Object.entries(variants)) {
-			const built = build("pdflatex", text);
+			const built = build("pdflatex", text, undefined, 2);
 			expect(built.status, `${label}\n${built.log}`).toBe(0);
+			expect(built.page, label).toBe(letterWidth);
 		}
 	},
 	60_000,
