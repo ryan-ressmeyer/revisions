@@ -849,18 +849,15 @@ export function ProjectView({
 	const unsent = repoState?.git.unsent ?? 0;
 	const behind = signedIn ? (repoState?.git.behind ?? 0) : 0;
 	const offline = signedIn && github.unreachable;
-	const short: string[] = [];
+	const arrows: string[] = [];
 	const words: string[] = [];
-	if (repoState?.git.dirty) {
-		short.push("Not committed");
-		words.push("Not committed");
-	}
+	if (repoState?.git.dirty) words.push("Not committed");
 	if (unsent > 0) {
-		short.push(`↑${unsent}`);
+		arrows.push(`↑${unsent}`);
 		words.push(commits(unsent, "not sent"));
 	}
 	if (behind > 0) {
-		short.push(`↓${behind}`);
+		arrows.push(`↓${behind}`);
 		words.push(commits(behind, "waiting on GitHub"));
 	}
 	if (offline)
@@ -868,6 +865,10 @@ export function ProjectView({
 			`GitHub could not be reached${github.reached ? ` since ${shortTime(github.reached)}` : ""}, so changes waiting there may not show`,
 		);
 	const stands = words.join(" · ");
+	// "Not committed · ↑2 ↓3": the arrows sit together.
+	const short = [repoState?.git.dirty ? "Not committed" : "", arrows.join(" ")]
+		.filter(Boolean)
+		.join(" · ");
 	const pdfVersion = Math.max(
 		build?.pdfVersion ?? 0,
 		polledBuild?.pdfVersion ?? 0,
@@ -993,7 +994,7 @@ export function ProjectView({
 					<span className="side end">
 						{stands && (
 							<span className="work-chip" aria-hidden="true" title={stands}>
-								{short.join(" · ")}
+								{short}
 								{offline && <CloudOff />}
 							</span>
 						)}

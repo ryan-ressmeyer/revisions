@@ -750,9 +750,10 @@ test("Periodic check: a commit pushed while the project is open shows as waiting
 	expect(fetches.sent).toBe(before + 1);
 });
 
-test("Check on returning to the page: a co-author's push shows in the top bar as soon as the page regains focus", async ({
+test("Check on returning to the page: a co-author's push shows in the top bar as soon as the page regains focus, beside the commits not yet sent", async ({
 	page,
 	github,
+	server,
 }) => {
 	const fetches = countFetches(page);
 	await open(page);
@@ -762,9 +763,13 @@ test("Check on returning to the page: a co-author's push shows in the top bar as
 	const other = coauthor(github);
 	other.push("Retitle", TITLE, "\\title{Their New Title}");
 	other.remove();
+	git(server.paper, "commit", "--quiet", "--allow-empty", "-m", "Mine");
 
 	await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-	await expect(chip(page)).toHaveText("↓1");
+	await expect(chip(page)).toHaveText("↑1 ↓1");
+	await expect(changesButton(page)).toHaveAccessibleName(
+		"Changes & history: 1 commit not sent · 1 commit waiting on GitHub",
+	);
 	expect(fetches.sent).toBe(before + 1);
 });
 

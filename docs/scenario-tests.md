@@ -278,7 +278,7 @@ Requirements from here on are in `specs/git-workflow.md`.
 |---|---|
 | Check on opening | `web/e2e/git.spec.ts: "Check on opening: commits pushed while the project was closed show as waiting, without pressing anything"` |
 | Periodic check | `web/e2e/git.spec.ts: "Periodic check: a commit pushed while the project is open shows as waiting within 5 minutes"` |
-| Check on returning to the page | `web/e2e/git.spec.ts: "Check on returning to the page: a co-author's push shows in the top bar as soon as the page regains focus"` |
+| Check on returning to the page | `web/e2e/git.spec.ts: "Check on returning to the page: a co-author's push shows in the top bar as soon as the page regains focus, beside the commits not yet sent"` |
 | GitHub unreachable | `web/e2e/git.spec.ts: "GitHub unreachable: the panel says when GitHub was last reached, and editing, committing, and building continue"` |
 
 ## Where the work stands
