@@ -1,7 +1,8 @@
 // A readable view of a unified diff: one collapsible section per file, one
 // table per hunk, additions and deletions coloured and marked up as ins/del.
-import { Fragment, useMemo } from "react";
+import { Fragment, type ReactNode, useMemo } from "react";
 import { type DiffFile, type DiffHunk, parseDiff } from "../core/diff/diff";
+import { changedWords, type Range } from "../core/diff/words";
 
 const fileWords: Record<DiffFile["status"], string> = {
 	modified: "changed",
@@ -20,6 +21,22 @@ const HUNK = /^@@ -\d+(?:,\d+)? \+(\d+)/;
 function hunkLabel(hunk: DiffHunk): string {
 	const m = HUNK.exec(hunk.header);
 	return m ? `Line ${m[1]}` : hunk.header;
+}
+
+/** `text` with the stretches in `ranges` wrapped in `<mark>`. */
+function withMarks(text: string, ranges: Range[] | undefined): ReactNode {
+	if (!ranges?.length) return text;
+	const out: ReactNode[] = [];
+	let at = 0;
+	for (const [from, to] of ranges) {
+		out.push(
+			text.slice(at, from),
+			<mark key={from}>{text.slice(from, to)}</mark>,
+		);
+		at = to;
+	}
+	out.push(text.slice(at));
+	return out;
 }
 
 /** Goes to a line of the file as it is now. */
@@ -56,13 +73,18 @@ function DiffFileView({ file, onLine }: { file: DiffFile; onLine?: OnLine }) {
 			else if (line.kind === "delete") deleted++;
 		}
 	}
+	// Kept across renders: typing a description re-renders the diff.
+	const marks = useMemo(
+		() => file.hunks.map((hunk) => changedWords(hunk.lines)),
+		[file],
+	);
 	let budget = MAX_LINES;
 	let hidden = 0;
-	const hunks = file.hunks.map((hunk) => {
+	const hunks = file.hunks.map((hunk, i) => {
 		const lines = hunk.lines.slice(0, Math.max(0, budget));
 		hidden += hunk.lines.length - lines.length;
 		budget -= lines.length;
-		return { hunk, lines };
+		return { hunk, lines, marks: marks[i] };
 	});
 
 	return (
@@ -97,7 +119,7 @@ function DiffFileView({ file, onLine }: { file: DiffFile; onLine?: OnLine }) {
 						<col />
 					</colgroup>
 					<tbody>
-						{hunks.map(({ hunk, lines }, i) => {
+						{hunks.map(({ hunk, lines, marks }, i) => {
 							const start = Number(HUNK.exec(hunk.header)?.[1] ?? 1);
 							// A removed line leads to where it was: the line after the
 							// last one the new file still has.
@@ -136,9 +158,9 @@ function DiffFileView({ file, onLine }: { file: DiffFile; onLine?: OnLine }) {
 												<td className="ln">{line.newLine ?? ""}</td>
 												<td className="code">
 													{line.kind === "add" ? (
-														<ins>{line.text}</ins>
+														<ins>{withMarks(line.text, marks?.[j])}</ins>
 													) : line.kind === "delete" ? (
-														<del>{line.text}</del>
+														<del>{withMarks(line.text, marks?.[j])}</del>
 													) : (
 														line.text
 													)}

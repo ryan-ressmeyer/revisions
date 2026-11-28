@@ -341,6 +341,12 @@ Requirements from here on are in `specs/git-workflow.md`.
 | An earlier commit's changes | `web/e2e/git.spec.ts: "An earlier commit's changes: the larger window shows that commit's diff, read-only, with no description and no jump"` |
 | Nothing to commit | `web/e2e/git.spec.ts: "Nothing to commit: Commit… is disabled"` |
 
+## Show changed words
+
+| Scenario | Test |
+|---|---|
+| A one-word edit | `web/src/core/diff/words.test.ts`; `web/e2e/git.spec.ts: "A one-word edit: the diff marks only the old word on the removed line and the new word on the added line"` |
+
 ## Destructive-operation confirmation
 
 | Scenario | Test |

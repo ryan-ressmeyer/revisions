@@ -50,6 +50,8 @@
 	--diff-add-text: #1f5b2a;
 	--diff-del-bg: #fbe7e5;
 	--diff-del-text: #8a2620;
+	--diff-add-word: #b5dfba;
+	--diff-del-word: #f3bdb6;
 }
 
 /* public/theme.js sets data-theme from the viewer's choice or the system. */
@@ -96,6 +98,8 @@
 	--diff-add-text: #a8dcb2;
 	--diff-del-bg: #3a2222;
 	--diff-del-text: #f2b0a8;
+	--diff-add-word: #2f5c3b;
+	--diff-del-word: #6b3530;
 }
 
 * {
@@ -2170,6 +2174,20 @@ button.graph-select:hover:not(:disabled) {
 
 .diff-delete del {
 	color: var(--diff-del-text);
+}
+
+/* The words that changed within a changed line. */
+.diff-table mark {
+	color: inherit;
+	border-radius: 2px;
+}
+
+.diff-add mark {
+	background: var(--diff-add-word);
+}
+
+.diff-delete mark {
+	background: var(--diff-del-word);
 }
 
 .diff-meta .code {

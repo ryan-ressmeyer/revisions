@@ -343,6 +343,18 @@ test("Nothing to commit: Commit… is disabled", async ({ page }) => {
 	await expect(p.getByRole("button", { name: "Commit…" })).toBeDisabled();
 });
 
+test("A one-word edit: the diff marks only the old word on the removed line and the new word on the added line", async ({
+	page,
+}) => {
+	await open(page);
+	await retitle(page, "Fixational Eye Movements Shape Late Visual Responses");
+	const p = await openPanel(page);
+	await p.getByRole("button", { name: "Commit…" }).click();
+	const w = review(page);
+	await expect(w.locator(".diff-delete mark")).toHaveText(["Early"]);
+	await expect(w.locator(".diff-add mark")).toHaveText(["Late"]);
+});
+
 test("Send: a commit reaches GitHub and the branch shows as in sync", async ({
 	page,
 	github,

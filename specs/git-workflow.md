@@ -18,7 +18,7 @@ Three gaps in the released workflow shape this spec:
 
 **Three levels of saved.** An edit is saved to disk a second after typing stops. A commit records it on this computer. Send puts the commits on GitHub, where co-authors see them. The top bar signals uncommitted changes and commits not yet sent, so a collaborator who closes the panel still sees that their revisions have not reached anyone. It also counts co-authors' commits waiting on GitHub, and marks when GitHub could not be reached [8, Q6–Q7].
 
-**Reviewing before a commit.** Commit…, beside Get latest, opens a window of about tablet width with the changed files, their diff, and the description. Clicking a changed line closes it and puts the cursor on that line in the editor, to fix what the review found. The same window shows an earlier commit's changes, read-only [8, Q1–Q4].
+**Reviewing before a commit.** Commit…, beside Get latest, opens a window of about tablet width with the changed files, their diff, and the description. Clicking a changed line closes it and puts the cursor on that line in the editor, to fix what the review found. The same window shows an earlier commit's changes, read-only [8, Q1–Q4]. A changed paragraph shows as the removed line above the added one, with the words that changed marked on each, so a one-word edit stands out in a long paragraph [9, Q1].
 
 **Where to revise.** A collaborator may revise on the branch they were sent or start their own branch. Revisions sets no default [1, Q1].
 
@@ -451,6 +451,15 @@ Changes & history SHALL offer Commit… to the right of Get latest. It SHALL ope
 - WHEN nothing has changed since the last commit
 - THEN Commit… is disabled
 
+### Requirement: Show changed words
+
+Every diff SHALL show a changed line as the removed line followed by the added line, and SHALL mark within them the words removed and the words added. A run of removed lines followed by a run of added lines SHALL be compared as a whole, so that a split, joined, or rewrapped paragraph lines up. A word is a run of letters and digits, a LaTeX command, or one other character other than a space. A line that keeps less than half of its words SHALL NOT be marked [9, Q1].
+
+#### Scenario: A one-word edit
+
+- WHEN the user changes one word in a paragraph and views the diff
+- THEN the removed line marks only the old word and the added line marks only the new one
+
 ### Requirement: Destructive-operation confirmation
 
 Force-push SHALL list the remote commits it will erase and SHALL use `--force-with-lease`. Discard SHALL show the diff it will remove. Each SHALL require one explicit confirmation [2, Q29].
@@ -493,6 +502,8 @@ Force-push SHALL list the remote commits it will erase and SHALL use `--force-wi
 
 **GitHub's side only inside the panel.** Chosen first, because the top bar has little room [1, Q13]. Reversed so that waiting commits show without opening the panel; arrows keep the chip as short as the words it replaced [8, Q6].
 
+**A changed paragraph as one line, like tracked changes.** Removed words struck through and added words beside them, in half the height. Rejected because it suits prose but not the preamble or other code, and telling them apart is hard [9, Q1].
+
 **Dimming a count that may be out of date.** Rejected in favour of a crossed-out cloud, so that a failed check is shown rather than only implied [8, Q7].
 
 **A phrase on the Changes & history button, or a compact mark with a count.** The phrase replaced the button's label ("Changes not committed", then "2 commits not sent"); the mark kept the label and added a dot and an unsent count. Both were built and compared in the running app beside the chip, and rejected for the chip [1, Q17].
@@ -519,3 +530,4 @@ None.
 - [6] The owner's request of 2026-11-20 to open repositories kept and used outside the Revisions folder, with an error saying a repository is not set up correctly when it is not a Git repository or not linked to GitHub, and the owner's choice to reach SSH remotes over HTTPS with the signed-in account.
 - [7] The owner's request of 2026-11-22 for a menu on each repository on Home with Show in folder, Copy path, Properties, and Remove or Unlink, with a confirmation that says exactly what removing or unlinking will do.
 - [8] `notes/grill-commit-review-01.md`. Interview on the commit review window and the top bar's ↑ and ↓, 2026-11-26 to 2026-11-27. Q numbers refer to its questions.
+- [9] `notes/grill-word-diff-01.md`. Follow-up on marking changed words in a diff, 2026-11-27. Q numbers refer to its questions.
