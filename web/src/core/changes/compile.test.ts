@@ -10,10 +10,16 @@ import {
 	addHighlight,
 	applyEdits,
 	type Edit,
-	ensureInlineNotes,
 	ensurePreamble,
 } from "./changes";
 import { trackEdit } from "./track";
+
+/** ensurePreamble's edits, failing the test if it refuses. */
+function prepared(text: string, author?: { id: string; name: string }): Edit[] {
+	const outcome = ensurePreamble(text, author);
+	if (!outcome.ok) throw new Error(outcome.reason);
+	return outcome.edits;
+}
 
 const hasLatexmk = spawnSync("latexmk", ["-v"]).status === 0;
 const title = `the fixture with comments, tracked changes and new authors compiles${hasLatexmk ? "" : " (skipped: latexmk is not on PATH)"}`;
@@ -90,10 +96,8 @@ test.skipIf(!hasLatexmk)(
 			recursive: true,
 		});
 		const main = new Doc(readFileSync(join(dir, "main.tex"), "utf8"));
-		main.apply(
-			ensurePreamble(main.text, { id: "RR", name: "Ryan_R & {co} 100%" }),
-		);
-		main.apply(ensurePreamble(main.text, { id: "AB", name: "Ada" }));
+		main.apply(prepared(main.text, { id: "RR", name: "Ryan_R & {co} 100%" }));
+		main.apply(prepared(main.text, { id: "AB", name: "Ada" }));
 
 		main.comment(
 			"$g = R_{\\text{post}} / R_{\\text{pre}}$ summarizes",
@@ -276,7 +280,7 @@ function placesDoc(
 			"",
 		].join("\n"),
 	);
-	doc.apply(ensurePreamble(doc.text, gale));
+	doc.apply(prepared(doc.text, gale));
 	for (const p of places) {
 		if (p.rich) doc.comment(`in ${p.name} words`, "GH", p.name);
 		else
@@ -424,7 +428,7 @@ describe.each(engines)("with %s", (engine) => {
 				"",
 			].join("\n"),
 		);
-		doc.apply(ensurePreamble(doc.text, gale));
+		doc.apply(prepared(doc.text, gale));
 		doc.comment(long, "GH", "long");
 		const built = build(engine, doc.text, undefined, 2);
 		expect(built.status, `${doc.text}\n${built.log}`).toBe(0);
@@ -447,7 +451,7 @@ describe.each(engines)("with %s", (engine) => {
 				"",
 			].join("\n"),
 		);
-		doc.apply(ensurePreamble(doc.text, gale));
+		doc.apply(prepared(doc.text, gale));
 		doc.comment("body text", "GH", "body");
 		const dir = mkdtempSync(join(tmpdir(), "revisions-column-"));
 		const wide = build(engine, doc.text, dir, 2);
@@ -479,12 +483,12 @@ const owner = [
 ].join("\n");
 
 test.skipIf(!engines.includes("pdflatex"))(
-	"without the block a comment in a figure stops the build with Float(s) lost, and adding the block fixes it",
+	"without the block a comment in a figure stops the build with Float(s) lost, and adding the blocks fixes it",
 	() => {
 		const broken = build("pdflatex", owner);
 		expect(broken.status).not.toBe(0);
 		expect(broken.log).toContain("Float(s) lost");
-		const fixed = applyEdits(owner, ensureInlineNotes(owner));
+		const fixed = applyEdits(owner, prepared(owner));
 		const built = build("pdflatex", fixed);
 		expect(built.status, built.log).toBe(0);
 		expect(built.notes.get("figure")).toEqual(new Set(["inline"]));
@@ -502,7 +506,7 @@ test.skipIf(!engines.includes("pdflatex"))(
 			/\\begin\{figure\}.*\n/,
 			"\\begin{abstract}An abstract.\\end{abstract}\n\\begin{figure}A figure.\\end{figure}\n",
 		);
-		const withBlocks = applyEdits(body, ensurePreamble(body, gale));
+		const withBlocks = applyEdits(body, prepared(body, gale));
 		const lastFi = withBlocks.lastIndexOf("\\fi\\fi\n") + "\\fi\\fi\n".length;
 		const variants = {
 			"commentmarkup=margin": withBlocks.replace(

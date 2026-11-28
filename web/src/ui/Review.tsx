@@ -369,3 +369,87 @@ export function AuthorDialog({
 		</dialog>
 	);
 }
+
+/** The lines of `text`, without blank ones, for showing an edit. */
+const shown = (text: string) => text.split(/\r?\n/).filter(Boolean);
+
+/**
+ * Asks before Revisions puts its preamble lines in the entry file, showing
+ * every line it adds and, for a block that was changed, every line it
+ * replaces. Nothing is written unless the user approves.
+ */
+export function PreambleDialog({
+	file,
+	text,
+	edits,
+	onApprove,
+	onCancel,
+}: {
+	/** The entry file's path. */
+	file: string;
+	/** The entry file's text the edits apply to. */
+	text: string;
+	edits: readonly Edit[];
+	onApprove: () => void;
+	onCancel: () => void;
+}) {
+	const dialog = useRef<HTMLDialogElement>(null);
+	useEffect(() => {
+		dialog.current?.showModal();
+	}, []);
+	const removed = edits.flatMap((e) => shown(text.slice(e.from, e.to)));
+	const added = edits.flatMap((e) => shown(e.insert));
+	const update = removed.length > 0;
+	return (
+		<dialog
+			ref={dialog}
+			className="wide"
+			aria-labelledby="preamble-title"
+			onCancel={(e) => {
+				e.preventDefault();
+				onCancel();
+			}}
+		>
+			<h2 id="preamble-title">
+				{update
+					? `Update the preamble of ${file}?`
+					: `Add lines to the preamble of ${file}?`}
+			</h2>
+			<p className="muted">
+				Comments and tracked changes need these lines in {file}, so that the PDF
+				builds and comments read well. Revisions changes nothing else in the
+				file, and the change shows in Changes &amp; history.
+			</p>
+			{update && (
+				<p>
+					Lines Revisions added earlier were changed. They will be replaced with
+					the current ones.
+				</p>
+			)}
+			<pre className="preamble-lines">
+				{removed.map((line, i) => (
+					// biome-ignore lint/suspicious/noArrayIndexKey: a fixed list
+					<div key={`del${i}`} className="del">
+						− {line}
+					</div>
+				))}
+				{added.map((line, i) => (
+					// biome-ignore lint/suspicious/noArrayIndexKey: a fixed list
+					<div key={`add${i}`} className="add">
+						+ {line}
+					</div>
+				))}
+			</pre>
+			<div className="row end">
+				<button type="button" onClick={onCancel}>
+					Cancel
+				</button>
+				<button type="button" className="primary" onClick={onApprove}>
+					{update
+						? "Update the lines and continue"
+						: "Add the lines and continue"}
+				</button>
+			</div>
+		</dialog>
+	);
+}

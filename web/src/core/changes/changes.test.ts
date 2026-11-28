@@ -7,9 +7,10 @@ import {
 	addComment,
 	addHighlight,
 	applyEdits,
-	ensureInlineNotes,
+	type Edit,
 	ensurePreamble,
 	escapeComment,
+	needsInlineNotes,
 	type Outcome,
 	rejectAll,
 	rejectChange,
@@ -227,17 +228,36 @@ const lines = (ls: string[], eol: string) => ls.map((l) => l + eol).join("");
 const inlineBlock = (eol = "\n") => lines(inline, eol);
 const block = (eol = "\n") => lines([...layout, ...inline], eol);
 
+/** ensurePreamble's edits, failing the test if it refuses. */
+function prep(text: string, author?: { id: string; name: string }): Edit[] {
+	const outcome = ensurePreamble(text, author);
+	if (!outcome.ok) throw new Error(outcome.reason);
+	return outcome.edits;
+}
+
+const gale = { id: "GH", name: "Gale Harper" };
+
+/** A manuscript whose preamble holds `blocks` and Gale's author line. */
+const ready = (blocks = block(), eol = "\n") =>
+	[
+		"\\documentclass{article}",
+		"\\usepackage{changes}",
+		blocks.replace(/\r?\n$/, ""),
+		"\\definechangesauthor[name={Gale Harper}, color=blue]{GH}",
+		"\\begin{document}",
+		"x",
+		"\\end{document}",
+		"",
+	].join(eol);
+
 test("Package not loaded: \\usepackage{changes}, the two blocks and the author go just before \\begin{document}", () => {
 	const text = fixture("main.tex");
 	const at = text.indexOf("\\begin{document}");
-	const out = applyEdits(
-		text,
-		ensurePreamble(text, { id: "RR", name: "Ryan R." }),
-	);
+	const out = applyEdits(text, prep(text, { id: "RR", name: "Ryan R." }));
 	expect(out).toBe(
 		`${text.slice(0, at)}\\usepackage{changes}\n${block()}\\definechangesauthor[name={Ryan R.}, color=blue]{RR}\n${text.slice(at)}`,
 	);
-	expect(ensurePreamble(out, { id: "RR", name: "Ryan R." })).toEqual([]);
+	expect(prep(out, { id: "RR", name: "Ryan R." })).toEqual([]);
 });
 
 test("New author: a preamble that loads changes gets only the author, in the next colour", () => {
@@ -251,10 +271,7 @@ test("New author: a preamble that loads changes gets only the author, in the nex
 		"x",
 		"\\end{document}",
 	].join("\n");
-	const out = applyEdits(
-		text,
-		ensurePreamble(text, { id: "RR", name: "R_R & {co}" }),
-	);
+	const out = applyEdits(text, prep(text, { id: "RR", name: "R_R & {co}" }));
 	expect(out).toBe(
 		text.replace(
 			"\\begin{document}",
@@ -274,13 +291,14 @@ test("a preamble that loads changes with options but has no blocks gets them on 
 		"\\end{document}",
 	].join("\n");
 	const author = { id: "GH", name: "Gale Harper" };
-	const out = applyEdits(text, ensurePreamble(text, author));
+	const out = applyEdits(text, prep(text, author));
 	expect(out).toBe(text.replace("% review\n", `% review\n${block()}`));
-	expect(ensurePreamble(out, author)).toEqual([]);
-	expect(ensureInlineNotes(out)).toEqual([]);
-	// The repair adds only the inline-notes block.
-	expect(applyEdits(text, ensureInlineNotes(text))).toBe(
-		text.replace("% review\n", `% review\n${inlineBlock()}`),
+	expect(prep(out, author)).toEqual([]);
+	expect(needsInlineNotes(out)).toBe(false);
+	// The failed build's repair has no author: both blocks, no author line.
+	expect(needsInlineNotes(text)).toBe(true);
+	expect(applyEdits(text, prep(text))).toBe(
+		text.replace("% review\n", `% review\n${block()}`),
 	);
 });
 
@@ -295,29 +313,27 @@ test("a preamble with only the inline-notes block gets the layout block on the l
 		"\\end{document}",
 	].join("\n");
 	const author = { id: "GH", name: "Gale Harper" };
-	const out = applyEdits(text, ensurePreamble(text, author));
+	const out = applyEdits(text, prep(text, author));
 	expect(out).toBe(
 		text.replace(
 			"\\usepackage{changes}\n",
 			`\\usepackage{changes}\n${lines(layout, "\n")}`,
 		),
 	);
-	expect(ensurePreamble(out, author)).toEqual([]);
+	expect(prep(out, author)).toEqual([]);
 });
 
 test("the block keeps CRLF line endings and every existing byte", () => {
 	const text =
 		"\\documentclass{article}\r\n\\usepackage{changes}\r\n\\begin{document}\r\nx\r\n\\end{document}\r\n";
-	const out = applyEdits(text, ensurePreamble(text, { id: "RR", name: "R" }));
+	const out = applyEdits(text, prep(text, { id: "RR", name: "R" }));
 	const at = text.indexOf("\\begin{document}");
 	expect(out).toBe(
 		`${text.slice(0, at)}${block("\r\n")}\\definechangesauthor[name={R}, color=blue]{RR}\r\n${text.slice(at)}`,
 	);
 	const fresh =
 		"\\documentclass{article}\r\n\\begin{document}\r\nx\r\n\\end{document}\r\n";
-	expect(
-		applyEdits(fresh, ensurePreamble(fresh, { id: "RR", name: "R" })),
-	).toBe(
+	expect(applyEdits(fresh, prep(fresh, { id: "RR", name: "R" }))).toBe(
 		fresh.replace(
 			"\\begin{document}",
 			`\\usepackage{changes}\r\n${block("\r\n")}\\definechangesauthor[name={R}, color=blue]{RR}\r\n\\begin{document}`,
@@ -328,21 +344,74 @@ test("the block keeps CRLF line endings and every existing byte", () => {
 test("a \\usepackage{changes} on the \\begin{document} line gets the block on lines of its own", () => {
 	const text =
 		"\\documentclass{article}\\usepackage{changes}\\begin{document}x\\end{document}";
-	expect(applyEdits(text, ensureInlineNotes(text))).toBe(
-		`\\documentclass{article}\\usepackage{changes}\n${inlineBlock()}\\begin{document}x\\end{document}`,
+	expect(applyEdits(text, prep(text))).toBe(
+		`\\documentclass{article}\\usepackage{changes}\n${block()}\\begin{document}x\\end{document}`,
 	);
-	expect(ensureInlineNotes("no document here")).toEqual([]);
+	expect(prep("no document here")).toEqual([]);
+	expect(needsInlineNotes("no document here")).toBe(false);
 });
 
 test("a commented-out \\usepackage{changes} does not count, and odd layouts still get their own lines", () => {
 	const text =
 		"\\documentclass{article}\n% \\usepackage{changes}\n\\usepackage{x}\\begin{document}\nx\n\\end{document}";
-	expect(applyEdits(text, ensurePreamble(text, { id: "RR", name: "R" }))).toBe(
+	expect(applyEdits(text, prep(text, { id: "RR", name: "R" }))).toBe(
 		`\\documentclass{article}\n% \\usepackage{changes}\n\\usepackage{x}\n\\usepackage{changes}\n${block()}\\definechangesauthor[name={R}, color=blue]{RR}\n\\begin{document}\nx\n\\end{document}`,
 	);
-	expect(ensurePreamble("no document here", { id: "RR", name: "R" })).toEqual(
-		[],
-	);
+	expect(prep("no document here", { id: "RR", name: "R" })).toEqual([]);
+});
+
+test("Reformatted block: indentation, line breaks, spacing after a command and % remarks are not changes", () => {
+	const reformatted = [
+		...layout.map((l) =>
+			`  ${l}`
+				// Split after a command and at an existing space.
+				.replace("\\fi\\fi\\fi\\fi", "\\fi \\fi\n\\fi\\fi")
+				.replace("<2in \\setlength", "<2in\n    \\setlength")
+				.replace("% tells the next run", "% for the next run")
+				.replace("{size=\\footnotesize}", "{size=\\footnotesize} % smaller"),
+		),
+		...inline.map((l) =>
+			l.replace("% boxes, table cells", "").replace(/^\\fi\\fi$/, "\\fi\n\\fi"),
+		),
+	].join("\n");
+	const text = ready(reformatted);
+	expect(text).not.toBe(ready());
+	expect(prep(text, gale)).toEqual([]);
+	expect(needsInlineNotes(text)).toBe(false);
+});
+
+test("Changed block: a block that does something else is replaced whole, keeping every other byte", () => {
+	const narrower = layout.map((l) => l.replaceAll("{2in}", "{1.5in}"));
+	const noAbstract = inline.filter((l) => !l.includes("env/abstract"));
+	const text = ready(lines([...narrower, ...noAbstract], "\n"));
+	expect(needsInlineNotes(text)).toBe(true);
+	expect(applyEdits(text, prep(text, gale))).toBe(ready());
+	// A missing layout block goes in where the changed inline block starts.
+	const lgn = ready(lines(noAbstract, "\n"));
+	expect(applyEdits(lgn, prep(lgn, gale))).toBe(ready());
+	// CRLF files keep CRLF.
+	const crlf = ready(lines([...layout, ...noAbstract], "\r\n"), "\r\n");
+	expect(applyEdits(crlf, prep(crlf, gale))).toBe(ready(block("\r\n"), "\r\n"));
+});
+
+test("Block without an end: a changed block with no closing \\fi\\fi is refused with its line", () => {
+	const noEnd = ready(lines([...layout, ...inline.slice(0, -1)], "\n"));
+	expect(ensurePreamble(noEnd, gale)).toEqual({
+		ok: false,
+		reason: expect.stringContaining("line 18"),
+	});
+	// The layout block's search stops at the inline block, which it never takes.
+	const layoutNoEnd = ready(lines([...layout.slice(0, -1), ...inline], "\n"));
+	expect(ensurePreamble(layoutNoEnd, gale)).toEqual({
+		ok: false,
+		reason: expect.stringContaining("line 3"),
+	});
+});
+
+test("only a missing or changed inline-notes block needs the failed build's repair", () => {
+	expect(needsInlineNotes(ready())).toBe(false);
+	expect(needsInlineNotes(ready(lines(inline, "\n")))).toBe(false);
+	expect(needsInlineNotes(ready(lines(layout, "\n")))).toBe(true);
 });
 
 test("accepting or rejecting one change keeps the right text byte for byte", () => {

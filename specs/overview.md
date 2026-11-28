@@ -194,22 +194,47 @@ Revisions SHALL store each comment as a `\highlight[id=…, comment={…}]{text}
 
 ### Requirement: Author identity
 
-Revisions SHALL use the author ID from its settings for `changes` markup, suggesting a default from the GitHub account. It SHALL add a `\definechangesauthor` line to the preamble when the author is not yet defined. It SHALL add `\usepackage{changes}` to the preamble when the manuscript does not load the package [7], and the block that draws comments inline where a margin note cannot go [12] and the block that lays comments out readably [21], each when the preamble lacks it, including in a manuscript that already loads `changes`.
+Revisions SHALL use the author ID from its settings for `changes` markup, suggesting a default from the GitHub account. Comments and tracked changes need lines in the main document's preamble: `\usepackage{changes}` when the manuscript does not load the package [7], a `\definechangesauthor` line when the author is not yet defined, and the block that draws comments inline where a margin note cannot go [12] and the block that lays comments out readably [21], each block also in a manuscript that already loads `changes`. Revisions SHALL treat these lines as one set and SHALL NOT change the source to add or repair any of them without the user's approval [22]. Before the first comment, highlight, or tracked change that needs any of them, Revisions SHALL show the file and every line it will add or replace, and SHALL write them, together with that change as one edit, only when the user approves. Cancelling SHALL change no file and add no markup, and SHALL keep a comment's text in its box. There SHALL be no way to approve only part of the set. A block SHALL count as present when its marker line is there and the code after it does what Revisions' current block does: indentation, line breaks, spacing after a command, and `%` remarks SHALL NOT count as changes. A block whose code does something else, whether edited by hand or written by an older release, SHALL be replaced whole on approval, from its marker line to its closing `\fi\fi` line, keeping every other byte and the file's line endings. When that closing line cannot be found before the next block or `\begin{document}`, Revisions SHALL add nothing and SHALL name the line where the block starts.
 
 #### Scenario: New author
 
-- WHEN a user whose author ID is not defined in the preamble adds their first comment
+- WHEN a user whose author ID is not defined in the preamble adds their first comment and approves the preamble lines
 - THEN Revisions adds the `\definechangesauthor` declaration for that ID to the preamble
 
 #### Scenario: Package not loaded
 
-- WHEN a user adds a comment or tracked change to a manuscript that does not load `changes`
+- WHEN a user adds a comment or tracked change to a manuscript that does not load `changes` and approves the preamble lines
 - THEN Revisions adds `\usepackage{changes}` to the preamble
 
 #### Scenario: Package loaded without the blocks
 
-- WHEN a user adds a comment to a manuscript that loads `changes`, with or without options, but lacks the inline-notes block, the layout block, or both
-- THEN Revisions adds each missing block on the line after that `\usepackage`, keeping every existing byte and the file's line endings, and adds nothing on later comments
+- WHEN a user adds a comment to a manuscript that loads `changes`, with or without options, but lacks the inline-notes block, the layout block, or both, and approves the preamble lines
+- THEN Revisions adds each missing block on the line after that `\usepackage`, keeping every existing byte and the file's line endings, and asks nothing on later comments
+
+#### Scenario: Preamble lines need approval
+
+- WHEN a user adds a comment to a manuscript that lacks any of Revisions' preamble lines
+- THEN Revisions shows the file and the lines, changes nothing until the user approves, and on approval writes the lines and the comment as one edit that one Undo takes back
+
+#### Scenario: Cancel the preamble lines
+
+- WHEN the user cancels instead of approving the preamble lines
+- THEN no file changes, no markup is added, and the comment's text stays in its box
+
+#### Scenario: Reformatted block
+
+- WHEN a block's lines have been reindented, rewrapped, or given different `%` remarks
+- THEN Revisions counts the block as present and asks nothing
+
+#### Scenario: Changed block
+
+- WHEN a block's code does something other than Revisions' current block, and the user adds a comment
+- THEN Revisions shows the lines it will replace and the lines that replace them, and on approval replaces the block whole, keeping every other byte
+
+#### Scenario: Block without an end
+
+- WHEN a changed block has lost its closing `\fi\fi` line
+- THEN Revisions adds nothing and names the line where the block starts
 
 ### Requirement: Tracked changes toggle
 
@@ -315,7 +340,7 @@ Revisions SHALL offer Quit Revisions in Settings, because the installed app has 
 
 ### Requirement: Explicit PDF builds
 
-Revisions SHALL compile only when the user presses the build button or shortcut. It SHALL show an out-of-date warning while the PDF lags the source. A failed build SHALL keep the last good PDF visible and show the error. The log of the build that made the PDF on screen SHALL stay available after later failed builds [8]. A build after one that failed, timed out, or was cancelled SHALL compile again from the start, so that it shows the real error again when nothing changed and succeeds once the source is fixed, with no cache to clear by hand [11]. The `changes` package draws a comment as a margin note, which LaTeX cannot place in some parts of a document. When a build fails with `Float(s) lost` or `Not in outer par mode` and the document contains comments, the failure SHALL explain in plain language that a comment sits where LaTeX cannot place a margin note, giving as examples the abstract of some journal templates, a caption, a footnote, a table, and a boxed area. It SHALL also name each comment found in such a place, with a link that opens it [11]. When the main document's preamble lacks the block that draws such comments inline, the failure SHALL offer one action that adds the block to the preamble as an ordinary edit, shown in Changes & history like any other, and builds again [12].
+Revisions SHALL compile only when the user presses the build button or shortcut. It SHALL show an out-of-date warning while the PDF lags the source. A failed build SHALL keep the last good PDF visible and show the error. The log of the build that made the PDF on screen SHALL stay available after later failed builds [8]. A build after one that failed, timed out, or was cancelled SHALL compile again from the start, so that it shows the real error again when nothing changed and succeeds once the source is fixed, with no cache to clear by hand [11]. The `changes` package draws a comment as a margin note, which LaTeX cannot place in some parts of a document. When a build fails with `Float(s) lost` or `Not in outer par mode` and the document contains comments, the failure SHALL explain in plain language that a comment sits where LaTeX cannot place a margin note, giving as examples the abstract of some journal templates, a caption, a footnote, a table, and a boxed area. It SHALL also name each comment found in such a place, with a link that opens it [11]. When the main document's preamble lacks the block that draws such comments inline, or holds a changed copy of it, the failure SHALL offer one action that shows Revisions' preamble lines, other than an author line, and on approval adds or repairs them as an ordinary edit, shown in Changes & history like any other, and builds again [12, 22].
 
 #### Scenario: Edit after build
 
@@ -349,8 +374,8 @@ Revisions SHALL compile only when the user presses the build button or shortcut.
 
 #### Scenario: Draw comments inline from a failed build
 
-- WHEN a build fails with `Float(s) lost` because a comment sits in a figure of a manuscript that loads `changes` without the inline-notes block, and the user takes the offered action
-- THEN Revisions adds the block after `\usepackage{changes}` in the main document, the build succeeds, and the added lines show as an uncommitted change
+- WHEN a build fails with `Float(s) lost` because a comment sits in a figure of a manuscript that loads `changes` without the inline-notes block, and the user takes the offered action and approves the lines
+- THEN Revisions adds both blocks after `\usepackage{changes}` in the main document, the build succeeds, and the added lines show as an uncommitted change
 
 ### Requirement: Download the PDF
 
@@ -619,3 +644,4 @@ Redraft's OpenIrisDPI trust profile, protected objects, and separate Source View
 - [19] The owner's request of 2026-11-24 for a download button in the PDF toolbar, and the owner's choices of the browser's ordinary download over a forced save dialog and of the repository's name for the file.
 - [20] The owner's request of 2026-11-24 for a button beside the version in Settings that checks for a new version, so that collaborators told of a release can find it at once.
 - [21] The owner's report of 2026-11-27 of a collaborator's feedback on a manuscript with 0.75in margins: comments filled the narrow margin one word per line and ran off the page, and long highlights ran past the margin on a single line. The owner chose a wider page with a column for notes over inline notes, and chose tikzmark's position-based highlighting after word-by-word highlighting with ulem was found to stop builds on common citation and siunitx commands.
+- [22] The owner's request of 2026-11-27 that Revisions change no source without the user's approval, so that preamble lines that are missing or broken are added or repaired only after the user agrees; the owner's choice of one all-or-nothing set of preamble lines over letting a user skip the blocks that only lay comments out; and the owner's ask that edits that leave a block doing the same thing never cause it to be rewritten.

@@ -5,6 +5,7 @@ import type { Page } from "@playwright/test";
 import {
 	expect,
 	inlineNotes,
+	layoutBlock,
 	openFileName,
 	openFromTree,
 	openPaper,
@@ -275,7 +276,7 @@ test("Comment where a margin note cannot go: the failure says why and opens the 
 	await expect.poll(() => cursorLine(page)).toBe(String(line));
 });
 
-test("Comment where a margin note cannot go: one click adds the inline block to the preamble and the build succeeds", async ({
+test("Comment where a margin note cannot go: after approval the blocks go into the preamble and the build succeeds", async ({
 	page,
 	server,
 }) => {
@@ -304,12 +305,20 @@ test("Comment where a margin note cannot go: one click adds the inline block to 
 			name: "Show these comments inside the text and build",
 		})
 		.click();
+	const dialog = page.getByRole("dialog", {
+		name: "Add lines to the preamble of main.tex?",
+	});
+	await expect(dialog).toContainText(inlineNotes.split("\n")[0] ?? "");
+	expect(readFileSync(main, "utf8")).toBe(text);
+	await dialog
+		.getByRole("button", { name: "Add the lines and continue" })
+		.click();
 	await expect
 		.poll(() => readFileSync(main, "utf8"))
 		.toBe(
 			text.replace(
 				"\\usepackage{changes}\n",
-				`\\usepackage{changes}\n${inlineNotes}\n`,
+				`\\usepackage{changes}\n${layoutBlock}\n${inlineNotes}\n`,
 			),
 		);
 	await expect(page.locator('[data-page="1"] canvas')).toHaveCount(1, {
@@ -317,13 +326,13 @@ test("Comment where a margin note cannot go: one click adds the inline block to 
 	});
 	await expect(page.getByText("The PDF could not be built")).toHaveCount(0);
 
-	// An ordinary edit, shown in Changes & history.
+	// An ordinary edit, shown in Changes & history: both blocks' marker lines.
 	await page.getByRole("button", { name: /Changes & history/ }).click();
 	const panel = page.getByRole("region", { name: "Changes & history" });
 	await panel.getByRole("button", { name: /Uncommitted changes/ }).click();
 	await expect(
 		panel.locator(".diff-add").filter({ hasText: "% Added by Revisions" }),
-	).toHaveCount(1);
+	).toHaveCount(2);
 });
 
 test.describe("without TeX", () => {

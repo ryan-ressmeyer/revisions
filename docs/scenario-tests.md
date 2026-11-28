@@ -64,6 +64,11 @@ Every Scenario in `specs/overview.md` and then `specs/git-workflow.md`, grouped 
 | New author | `web/src/core/changes/changes.test.ts: "New author: a preamble that loads changes gets only the author, in the next colour"`; `web/e2e/rich.spec.ts: "Add comment, New author, Package not loaded: the first comment declares the author and loads changes"` |
 | Package not loaded | `web/src/core/changes/changes.test.ts: "Package not loaded: \\usepackage{changes}, the two blocks and the author go just before \\begin{document}"`; `web/e2e/rich.spec.ts: "Add comment, New author, Package not loaded: the first comment declares the author and loads changes"` |
 | Package loaded without the blocks | `web/src/core/changes/changes.test.ts: "a preamble that loads changes with options but has no blocks gets them on the next line, once"`, `"a preamble with only the inline-notes block gets the layout block on the line after \\usepackage{changes}, once"`, `"the block keeps CRLF line endings and every existing byte"`, `"a \\usepackage{changes} on the \\begin{document} line gets the block on lines of its own"` |
+| Preamble lines need approval | `web/e2e/rich.spec.ts: "Preamble lines need approval, Cancel the preamble lines: nothing is written until the user approves, and one Undo takes back the lines and the comment"`; `web/e2e/build.spec.ts: "Comment where a margin note cannot go: after approval the blocks go into the preamble and the build succeeds"` |
+| Cancel the preamble lines | `web/e2e/rich.spec.ts: "Preamble lines need approval, Cancel the preamble lines: nothing is written until the user approves, and one Undo takes back the lines and the comment"` |
+| Reformatted block | `web/src/core/changes/changes.test.ts: "Reformatted block: indentation, line breaks, spacing after a command and % remarks are not changes"`; `web/e2e/rich.spec.ts: "Reformatted block: indentation, line breaks and remarks ask nothing"` |
+| Changed block | `web/src/core/changes/changes.test.ts: "Changed block: a block that does something else is replaced whole, keeping every other byte"`; `web/e2e/rich.spec.ts: "Changed block: the dialog shows the lines it replaces, and approving restores the block"` |
+| Block without an end | `web/src/core/changes/changes.test.ts: "Block without an end: a changed block with no closing \\fi\\fi is refused with its line"` |
 
 ## Tracked changes toggle
 
@@ -129,7 +134,7 @@ Every Scenario in `specs/overview.md` and then `specs/git-workflow.md`, grouped 
 | Rebuild after a failure | `internal/build/build_test.go: TestRebuildAfterAFailureShowsTheErrorAgain`, `TestRecoveryAfterABiberFailure` |
 | Fixed after a failure | `internal/build/build_test.go: TestRebuildAfterAFailureShowsTheErrorAgain`, `TestRecoveryAfterABiberFailure` (skipped without biber) |
 | Comment where a margin note cannot go | `web/src/core/changes/notes.test.ts: "a comment where a margin note cannot go is explained and named, with its file and line"`, `"Not in outer par mode is explained the same way"`, `"nothing to explain for other errors, or for a document without comments"`, `"comments only in ordinary text still get the explanation, with no names"`; `web/e2e/build.spec.ts: "Comment where a margin note cannot go: the failure says why and opens the comment"` |
-| Draw comments inline from a failed build | `web/src/core/changes/compile.test.ts: "without the block a comment in a figure stops the build with Float(s) lost, and adding the block fixes it"`; `web/e2e/build.spec.ts: "Comment where a margin note cannot go: one click adds the inline block to the preamble and the build succeeds"` |
+| Draw comments inline from a failed build | `web/src/core/changes/compile.test.ts: "without the block a comment in a figure stops the build with Float(s) lost, and adding the blocks fixes it"`; `web/src/core/changes/changes.test.ts: "only a missing or changed inline-notes block needs the failed build's repair"`; `web/e2e/build.spec.ts: "Comment where a margin note cannot go: after approval the blocks go into the preamble and the build succeeds"` |
 
 ## Download the PDF
 

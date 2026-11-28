@@ -63,6 +63,19 @@ async function confirmAuthor(page: Page) {
 	await expect(dialog).toBeHidden();
 }
 
+/** The dialog that asks before Revisions adds its lines to main.tex. */
+const preambleDialog = (page: Page) =>
+	page.getByRole("dialog", { name: "Add lines to the preamble of main.tex?" });
+
+/** Approves the lines Revisions adds to main.tex before the first markup. */
+async function approvePreamble(page: Page) {
+	const dialog = preambleDialog(page);
+	await dialog
+		.getByRole("button", { name: "Add the lines and continue" })
+		.click();
+	await expect(dialog).toBeHidden();
+}
+
 test.describe("rendering", () => {
 	test("Unknown macro: shows as raw source that is editable in place", async ({
 		page,
@@ -309,6 +322,7 @@ test.describe("comments", () => {
 		await page.getByLabel("Your comment").fill("Is this {100%} true?");
 		await page.getByRole("button", { name: "Add comment" }).click();
 		await confirmAuthor(page);
+		await approvePreamble(page);
 		const expected = withPreamble(original).replace(
 			"never still",
 			"\\highlight[id=GH, comment={Is this \\{100\\%\\} true?}]{never still}",
@@ -318,6 +332,98 @@ test.describe("comments", () => {
 			review(page).getByRole("listitem").filter({ hasText: "never still" }),
 		).toContainText("Is this {100%} true?");
 		await expect(editor(page).getByText("\\highlight")).toHaveCount(0);
+	});
+
+	test("Preamble lines need approval, Cancel the preamble lines: nothing is written until the user approves, and one Undo takes back the lines and the comment", async ({
+		page,
+		server,
+	}) => {
+		await openPaper(page);
+		await select(page, "never still");
+		await page.getByRole("button", { name: "Comment" }).click();
+		await page.getByLabel("Your comment").fill("Is this true?");
+		await page.getByRole("button", { name: "Add comment" }).click();
+		await confirmAuthor(page);
+		const dialog = preambleDialog(page);
+		await expect(dialog).toContainText("\\usepackage{changes}");
+		await expect(dialog).toContainText(
+			"\\definechangesauthor[name={Gale Harper}, color=blue]{GH}",
+		);
+		expect(onDisk(server)).toBe(original);
+		await dialog.getByRole("button", { name: "Cancel" }).click();
+		await expect(dialog).toBeHidden();
+		await expect(page.getByLabel("Your comment")).toHaveValue("Is this true?");
+		expect(onDisk(server)).toBe(original);
+
+		// Asked again; approving writes the lines with the comment, as one edit.
+		await page.getByRole("button", { name: "Add comment" }).click();
+		await approvePreamble(page);
+		await expect
+			.poll(() => onDisk(server))
+			.toBe(
+				withPreamble(original).replace(
+					"never still",
+					"\\highlight[id=GH, comment={Is this true?}]{never still}",
+				),
+			);
+		await page.keyboard.press("Control+z");
+		await expect.poll(() => onDisk(server)).toBe(original);
+	});
+
+	test("Reformatted block: indentation, line breaks and remarks ask nothing", async ({
+		page,
+		server,
+	}) => {
+		const reformatted = withPreamble(original)
+			.replace("% tells the next run", "% for the next run")
+			.replace("\\fi\\fi\\fi\\fi", "  \\fi\\fi\n  \\fi\\fi");
+		await openPaper(page);
+		writeFileSync(join(server.paper, "main.tex"), reformatted);
+		await page.reload();
+		await expect(editor(page)).toBeVisible();
+		await select(page, "never still");
+		await page.getByRole("button", { name: "Comment" }).click();
+		await page.getByLabel("Your comment").fill("Is this true?");
+		await page.getByRole("button", { name: "Add comment" }).click();
+		await confirmAuthor(page);
+		await expect
+			.poll(() => onDisk(server))
+			.toBe(
+				reformatted.replace(
+					"never still",
+					"\\highlight[id=GH, comment={Is this true?}]{never still}",
+				),
+			);
+		await expect(page.getByRole("dialog")).toHaveCount(0);
+	});
+
+	test("Changed block: the dialog shows the lines it replaces, and approving restores the block", async ({
+		page,
+		server,
+	}) => {
+		const changed = withPreamble(original).replace("{2in}", "{1.5in}");
+		await openPaper(page);
+		writeFileSync(join(server.paper, "main.tex"), changed);
+		await page.reload();
+		await expect(editor(page)).toBeVisible();
+		await select(page, "never still");
+		await page.getByRole("button", { name: "Highlight", exact: true }).click();
+		await confirmAuthor(page);
+		const dialog = page.getByRole("dialog", {
+			name: "Update the preamble of main.tex?",
+		});
+		await expect(dialog.locator(".del")).toContainText(["{1.5in}"]);
+		await dialog
+			.getByRole("button", { name: "Update the lines and continue" })
+			.click();
+		await expect
+			.poll(() => onDisk(server))
+			.toBe(
+				withPreamble(original).replace(
+					"never still",
+					"\\highlight[id=GH]{never still}",
+				),
+			);
 	});
 
 	test("Add comment: in an included file, the entry file gets the author declaration", async ({
@@ -338,6 +444,7 @@ test.describe("comments", () => {
 		await page.getByLabel("Your comment").fill("Which threshold?");
 		await page.getByRole("button", { name: "Add comment" }).click();
 		await confirmAuthor(page);
+		await approvePreamble(page);
 		await expect
 			.poll(() => onDisk(server, "sections/methods.tex"))
 			.toBe(
@@ -357,6 +464,7 @@ test.describe("comments", () => {
 		await select(page, "never still");
 		await page.getByRole("button", { name: "Highlight", exact: true }).click();
 		await confirmAuthor(page);
+		await approvePreamble(page);
 		const expected = withPreamble(original).replace(
 			"never still",
 			"\\highlight[id=GH]{never still}",
@@ -496,6 +604,7 @@ test.describe("tracked changes", () => {
 		await openPaper(page);
 		await page.getByRole("button", { name: "Track changes" }).click();
 		await confirmAuthor(page);
+		await approvePreamble(page);
 		await expect(
 			page.getByRole("button", { name: "Track changes" }),
 		).toHaveAttribute("aria-pressed", "true");
@@ -529,6 +638,7 @@ test.describe("tracked changes", () => {
 		await openPaper(page);
 		await page.getByRole("button", { name: "Track changes" }).click();
 		await confirmAuthor(page);
+		await approvePreamble(page);
 		await select(page, "\\vdeg{0.5");
 		await page.keyboard.press("ArrowRight");
 		await page.keyboard.type("1");
@@ -567,6 +677,7 @@ test.describe("tracked changes", () => {
 		// A tracked edit made while markup is hidden is recorded in full.
 		await page.getByRole("button", { name: "Track changes" }).click();
 		await confirmAuthor(page);
+		await approvePreamble(page);
 		await select(page, "drift");
 		await page.keyboard.type("wander");
 		await expect
@@ -611,6 +722,7 @@ test("A comment and a tracked change added in the browser build into a PDF", asy
 	await page.getByLabel("Your comment").fill("Check & cite");
 	await page.getByRole("button", { name: "Add comment" }).click();
 	await confirmAuthor(page);
+	await approvePreamble(page);
 	await page.getByRole("button", { name: "Track changes" }).click();
 	await select(page, "drift");
 	await page.keyboard.type("wander");
@@ -635,6 +747,7 @@ test("Add comment: a comment in a table caption is drawn inline and the PDF buil
 	await page.getByLabel("Your comment").fill("Which units?");
 	await page.getByRole("button", { name: "Add comment" }).click();
 	await confirmAuthor(page);
+	await approvePreamble(page);
 	await expect
 		.poll(() => onDisk(server))
 		.toBe(

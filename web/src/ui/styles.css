@@ -2216,6 +2216,31 @@ dialog.wide {
 	width: min(46rem, 94vw);
 }
 
+/* The preamble lines Revisions asks to add or replace, as a small diff. */
+.preamble-lines {
+	max-height: 40vh;
+	overflow: auto;
+	font-size: 0.8rem;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+}
+
+.preamble-lines > div {
+	min-width: 100%;
+	width: max-content;
+	padding: 0 0.5rem;
+}
+
+.preamble-lines .add {
+	background: var(--diff-add-bg);
+	color: var(--diff-add-text);
+}
+
+.preamble-lines .del {
+	background: var(--diff-del-bg);
+	color: var(--diff-del-text);
+}
+
 /* The review window: about tablet width, with the title fixed and the
    changes scrolling beneath it. */
 dialog.review {

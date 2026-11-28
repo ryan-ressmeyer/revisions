@@ -51,8 +51,8 @@ import {
 	addHighlight,
 	applyEdits,
 	type Edit,
-	ensureInlineNotes,
 	ensurePreamble,
+	needsInlineNotes,
 } from "../core/changes/changes";
 import { marginNoteTrouble } from "../core/changes/notes";
 import type { SourceFile } from "../core/latex/project";
@@ -84,6 +84,7 @@ import {
 	changesIn,
 	createEditorStore,
 	type EditorStore,
+	PreambleDialog,
 	ReviewPanel,
 	storeListener,
 	useEditorState,
@@ -200,6 +201,12 @@ export function ProjectView({
 		error: string;
 		answer: (author: Author | null) => void;
 	} | null>(null);
+	const [preamblePrompt, setPreamblePrompt] = useState<{
+		file: string;
+		text: string;
+		edits: Edit[];
+		answer: (approved: boolean) => void;
+	} | null>(null);
 	const store = useMemo(createEditorStore, []);
 	const {
 		files: sourceFiles,
@@ -313,30 +320,57 @@ export function ProjectView({
 		}
 	};
 
-	// The entry file must load `changes` and declare the author before the
-	// first comment or tracked change. When the entry file is open its edits
-	// go into the editor with the change (entryEdits); otherwise it is
-	// loaded, fixed, and saved here.
-	const prepareEntry = async (author: Author): Promise<boolean> => {
+	// Revisions' preamble lines (changes, the two blocks, and the author when
+	// there is one) must be in the entry file before the first comment or
+	// tracked change, and only the user may put them there: false when they
+	// cancel or the lines cannot be put in. When the entry file is open the
+	// approved edits go into the editor with the change (entryEdits);
+	// otherwise it is loaded, fixed, and saved here.
+	const prepareEntry = async (author?: Author): Promise<boolean> => {
 		const entry = project?.entry;
-		if (!entry || entry === fileRef.current?.path) return true;
+		if (!entry) return true;
+		const v = view.current;
+		const open = v && entry === fileRef.current?.path;
 		try {
-			const loaded = await loadFile(id, entry);
-			const edits = ensurePreamble(loaded.text, author);
-			if (edits.length > 0)
-				await putFile(id, entry, loaded.hash, applyEdits(loaded.text, edits));
+			const loaded = open
+				? { text: v.state.doc.toString(), hash: "" }
+				: await loadFile(id, entry);
+			const outcome = ensurePreamble(loaded.text, author);
+			if (!outcome.ok) {
+				setNotice(`Nothing was changed. In ${entry}: ${outcome.reason}`);
+				return false;
+			}
+			if (outcome.edits.length === 0) return true;
+			const approved = await new Promise<boolean>((answer) =>
+				setPreamblePrompt({
+					file: entry,
+					text: loaded.text,
+					edits: outcome.edits,
+					answer,
+				}),
+			);
+			if (!approved) return false;
+			if (!open)
+				await putFile(
+					id,
+					entry,
+					loaded.hash,
+					applyEdits(loaded.text, outcome.edits),
+				);
 			return true;
 		} catch (error) {
 			setNotice(
-				`Revisions could not add your name to ${entry}, so nothing was changed. ${explain(error)}`,
+				`Revisions could not change ${entry}, so nothing was changed. ${explain(error)}`,
 			);
 			return false;
 		}
 	};
-	const entryEdits = (text: string, author: Author): Edit[] =>
-		project?.entry && project.entry === fileRef.current?.path
-			? ensurePreamble(text, author)
-			: [];
+	// The approved edits to the open entry file, from its current text.
+	const entryEdits = (text: string, author?: Author): Edit[] => {
+		if (!project?.entry || project.entry !== fileRef.current?.path) return [];
+		const outcome = ensurePreamble(text, author);
+		return outcome.ok ? outcome.edits : [];
+	};
 
 	const toggleTracking = async () => {
 		if (snapshotHead) return;
@@ -582,30 +616,20 @@ export function ProjectView({
 	}, [id]);
 
 	// The repair for a build that failed on comments where a margin note
-	// cannot go: add the block that draws them inline to the entry file, as
-	// an ordinary edit, and build again.
+	// cannot go: once the user approves, put Revisions' blocks, which draw
+	// such comments inline, in the entry file as an ordinary edit, and build
+	// again.
 	const drawInline = async () => {
 		if (!entry) return;
 		if (snapshotHead) {
 			setNotice(LOCKED);
 			return;
 		}
+		if (!(await prepareEntry())) return;
 		const v = view.current;
-		if (v && entry === fileRef.current?.path) {
-			const edits = ensureInlineNotes(v.state.doc.toString());
+		if (v) {
+			const edits = entryEdits(v.state.doc.toString());
 			if (edits.length > 0) v.dispatch({ changes: edits });
-		} else {
-			try {
-				const loaded = await loadFile(id, entry);
-				const edits = ensureInlineNotes(loaded.text);
-				if (edits.length > 0)
-					await putFile(id, entry, loaded.hash, applyEdits(loaded.text, edits));
-			} catch (error) {
-				setNotice(
-					`Revisions could not change ${entry}, so nothing was changed. ${explain(error)}`,
-				);
-				return;
-			}
 		}
 		await runBuild();
 	};
@@ -1342,6 +1366,21 @@ export function ProjectView({
 					}
 				/>
 			</div>
+			{preamblePrompt && (
+				<PreambleDialog
+					file={preamblePrompt.file}
+					text={preamblePrompt.text}
+					edits={preamblePrompt.edits}
+					onApprove={() => {
+						preamblePrompt.answer(true);
+						setPreamblePrompt(null);
+					}}
+					onCancel={() => {
+						preamblePrompt.answer(false);
+						setPreamblePrompt(null);
+					}}
+				/>
+			)}
 		</div>
 	);
 }
@@ -1655,7 +1694,7 @@ function BuildProblems({
 	/** The main document's path. */
 	entry: string;
 	onOpen: (path: string, jump: Jump) => void;
-	/** Adds the block that draws comments inline, and builds. */
+	/** Asks to put in Revisions' preamble lines, which draw such comments inline, and builds. */
 	onInline: () => void;
 }) {
 	const title = problemTitle[build.state];
@@ -1667,7 +1706,7 @@ function BuildProblems({
 	const canInline =
 		notes !== undefined &&
 		entryText !== undefined &&
-		ensureInlineNotes(entryText).length > 0;
+		needsInlineNotes(entryText);
 	return (
 		<div className="build-problems" role="alert">
 			<h2>{title}</h2>

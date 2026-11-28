@@ -275,10 +275,6 @@ interface Preamble {
 	body: number;
 	/** The start of the line after the `\usepackage` that loads changes, at most `body`. */
 	changes?: number;
-	/** Whether the preamble holds the {@link inlineNotes} block. */
-	inline: boolean;
-	/** Whether the preamble holds the {@link layoutBlock}. */
-	layout: boolean;
 	/** How many `\definechangesauthor` lines there are. */
 	authors: number;
 	ids: Set<string>;
@@ -288,13 +284,7 @@ function readPreamble(text: string): Preamble | undefined {
 	const nodes = scan(text).children;
 	const body = documentEnv(nodes)?.from;
 	if (body === undefined) return undefined;
-	const p: Preamble = {
-		body,
-		inline: text.slice(0, body).includes(inlineNotes[0] ?? ""),
-		layout: text.slice(0, body).includes(layoutBlock[0] ?? ""),
-		authors: 0,
-		ids: new Set(),
-	};
+	const p: Preamble = { body, authors: 0, ids: new Set() };
 	for (const n of nodes) {
 		if (n.from >= body) break;
 		const arg = n.kind === "command" ? n.args[1] : undefined;
@@ -313,6 +303,66 @@ function readPreamble(text: string): Preamble | undefined {
 	return p;
 }
 
+/**
+ * TeX code as TeX reads it, for telling whether a block still does what
+ * Revisions wrote: `%` remarks dropped, every run of white space one space,
+ * and none after a command word, so indentation, line breaks and remarks are
+ * not changes.
+ */
+function code(text: string): string {
+	return text
+		.replace(/(^|[^\\])((?:\\\\)*)%.*$/gm, "$1$2")
+		.replace(/\s+/g, " ")
+		.replace(/(\\[A-Za-z]+) /g, "$1")
+		.trim();
+}
+
+const blocks = [layoutBlock, inlineNotes];
+
+/**
+ * Where a Revisions block stands in the preamble (text up to `body`):
+ * missing when its marker line is not there; current when the lines after
+ * the marker, up to the next block or `\begin{document}`, begin with code
+ * equal to the block's; changed otherwise, running from the marker to the
+ * first line whose code is `\fi\fi`, the block's last; and lost when a
+ * changed block has no such line, so its end is unknown.
+ * ponytail: the first `\fi\fi` line ends a changed block, which a reformat
+ * that splits the layout block's `\fi\fi\fi\fi` line can fool; the dialog
+ * shows what goes. Match the old block's lines if that ever bites.
+ */
+type Found =
+	| { state: "missing" | "current" }
+	| { state: "changed"; from: number; to: number }
+	| { state: "lost"; line: number };
+
+function findBlock(text: string, body: number, block: string[]): Found {
+	const pre = text.slice(0, body);
+	const mark = pre.indexOf(block[0] ?? "");
+	if (mark < 0) return { state: "missing" };
+	const bol = pre.lastIndexOf("\n", mark - 1) + 1;
+	const from = pre.slice(bol, mark).trim() ? mark : bol;
+	const eol = pre.indexOf("\n", mark);
+	const start = eol < 0 ? body : eol + 1;
+	let limit = body;
+	for (const other of blocks) {
+		const at = pre.indexOf(other[0] ?? "", start);
+		if (at >= 0) limit = Math.min(limit, pre.lastIndexOf("\n", at - 1) + 1);
+	}
+	const want = code(block.slice(1).join("\n"));
+	let end: number | undefined;
+	for (let at = start; at < limit; ) {
+		const nl = text.indexOf("\n", at);
+		const to = nl < 0 || nl >= limit ? limit : nl + 1;
+		if (code(text.slice(start, to)) === want) return { state: "current" };
+		if (end === undefined && code(text.slice(at, to)) === "\\fi\\fi") end = to;
+		at = to;
+	}
+	if (end === undefined) {
+		return { state: "lost", line: text.slice(0, mark).split("\n").length };
+	}
+	return { state: "changed", from, to: end };
+}
+
 // An edit that inserts `lines` at `at` as whole lines, with the line ending
 // of the line before.
 function insertLines(text: string, at: number, lines: string[]): Edit {
@@ -327,64 +377,82 @@ function insertLines(text: string, at: number, lines: string[]): Edit {
 }
 
 /**
- * Edits to the entry file's text so that `author` can write changes markup
- * and comments compile everywhere and read well: `\usepackage{changes}` when
- * no uncommented `\usepackage[…]{…}` loads the package; the
- * {@link layoutBlock} and the block that draws comments inline where a
- * margin note cannot go (see {@link ensureInlineNotes}), each when it is
- * missing; and `\definechangesauthor[name={…}, color=…]{<id>}` when that ID
- * is not declared yet. The package, the blocks and the author go on their
- * own lines immediately before `\begin{document}`, in that order, except
- * that the blocks go on the line after a `\usepackage` that already loads
- * changes.
- * The colour is the next one in a fixed palette of xcolor names, by how many
- * authors the preamble already declares. No edits when nothing is missing or
- * the text has no `\begin{document}`.
+ * Edits to the entry file's text that put in place the preamble lines
+ * Revisions needs, as one set, so that `author` can write changes markup and
+ * comments compile everywhere and read well: `\usepackage{changes}` when no
+ * uncommented `\usepackage[…]{…}` loads the package; the {@link layoutBlock}
+ * and the {@link inlineNotes} block, each when it is missing or does
+ * something other than Revisions' current block (indentation, line breaks
+ * and `%` remarks do not count); and, given an `author`,
+ * `\definechangesauthor[name={…}, color=…]{<id>}` when that ID is not
+ * declared yet. The package, missing blocks and the author go on their own
+ * lines immediately before `\begin{document}`, in that order, except that
+ * missing blocks go on the line after a `\usepackage` that already loads
+ * changes. A changed block is replaced whole, from its marker line to its
+ * closing `\fi\fi` line; refused, with a reason naming the line, when that
+ * line is missing. The colour is the next one in a fixed palette of xcolor
+ * names, by how many authors the preamble already declares. No edits when
+ * nothing is missing or the text has no `\begin{document}`.
  *
  * The entry file is often not the file being edited: apply these edits to
- * the entry file's own text before (or together with) the first comment or
- * tracked change in any file of the project. `author.id` is used verbatim
- * and should be letters and digits; `author.name` is escaped.
+ * the entry file's own text, once the user approves them, before (or
+ * together with) the first comment or tracked change in any file of the
+ * project. `author.id` is used verbatim and should be letters and digits;
+ * `author.name` is escaped.
  */
 export function ensurePreamble(
 	entryText: string,
-	author: { id: string; name: string },
-): Edit[] {
+	author?: { id: string; name: string },
+): Outcome {
 	const p = readPreamble(entryText);
-	if (!p) return [];
+	if (!p) return { ok: true, edits: [] };
 	const edits: Edit[] = [];
 	const lines: string[] = [];
-	const blocks = [
-		...(p.layout ? [] : layoutBlock),
-		...(p.inline ? [] : inlineNotes),
-	];
-	if (p.changes === undefined) {
-		lines.push("\\usepackage{changes}", ...blocks);
-	} else if (blocks.length > 0) {
-		edits.push(insertLines(entryText, p.changes, blocks));
+	const missing: string[] = [];
+	for (const block of blocks) {
+		const found = findBlock(entryText, p.body, block);
+		if (found.state === "lost") {
+			return refuse(
+				`The block Revisions added at line ${found.line} was changed and no longer ends with a \\fi\\fi line, so Revisions cannot tell where it ends. Restore that line or delete the block, then try again.`,
+			);
+		}
+		if (found.state === "missing") missing.push(...block);
+		if (found.state === "changed") {
+			edits.push({
+				...insertLines(entryText, found.from, block),
+				to: found.to,
+			});
+		}
 	}
-	if (!p.ids.has(author.id)) {
+	if (p.changes === undefined) {
+		lines.push("\\usepackage{changes}", ...missing);
+	} else if (missing.length > 0) {
+		edits.push(insertLines(entryText, p.changes, missing));
+	}
+	if (author && !p.ids.has(author.id)) {
 		const color = palette[p.authors % palette.length];
 		lines.push(
 			`\\definechangesauthor[name={${escapeComment(author.name)}}, color=${color}]{${author.id}}`,
 		);
 	}
 	if (lines.length > 0) edits.push(insertLines(entryText, p.body, lines));
-	return edits;
+	// An insertion goes before a replacement that starts where it does.
+	edits.sort((a, b) => a.from - b.from || a.to - b.to);
+	return { ok: true, edits };
 }
 
 /**
- * The edit that adds only the block drawing comments inline where LaTeX
- * cannot place a margin note: on the line after the `\usepackage` that loads
- * changes, or else just before `\begin{document}`. For a manuscript that
- * already has comments and fails to build; {@link ensurePreamble} adds it
- * with the first comment. No edits when the block is there or the text has
- * no `\begin{document}`.
+ * Whether the entry file lacks a current {@link inlineNotes} block, the one
+ * that lets comments compile where LaTeX cannot place a margin note: when it
+ * is missing or changed. A failed build offers {@link ensurePreamble} then.
+ * False for text with no `\begin{document}`.
  */
-export function ensureInlineNotes(entryText: string): Edit[] {
+export function needsInlineNotes(entryText: string): boolean {
 	const p = readPreamble(entryText);
-	if (!p || p.inline) return [];
-	return [insertLines(entryText, p.changes ?? p.body, inlineNotes)];
+	return (
+		p !== undefined &&
+		findBlock(entryText, p.body, inlineNotes).state !== "current"
+	);
 }
 
 function documentEnv(nodes: Node[]): Env | undefined {
